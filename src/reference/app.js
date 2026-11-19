@@ -41,14 +41,45 @@ let dialogTrigger;
 const heroForm = {
   step: 1,
   service: 'buy',
-  contact: { name: '', phone: '', email: '', callback: true },
+  choice: 'below',
+  contact: { name: '', phone: '', email: '', notes: '', callback: true },
   errors: {},
 };
 
 const heroServices = {
-  buy: { title: 'Buying a home', sub: 'In South Australia', icon: 'key' },
-  sell: { title: 'Selling a home', sub: 'In South Australia', icon: 'tag' },
-  transfer: { title: 'Family transfer', sub: 'Between spouses or relatives', icon: 'transfer' },
+  buy: {
+    title: 'Buying a home',
+    sub: 'In South Australia',
+    icon: 'key',
+    question: 'What is the purchase price?',
+    choices: [
+      ['below', 'Under $1 million', 'Standard South Australian residential rate'],
+      ['above', '$1 million or more', 'High-value property conveyancing'],
+      ['unsure', 'I’m not sure yet', 'Still searching or planning ahead'],
+    ],
+  },
+  sell: {
+    title: 'Selling a home',
+    sub: 'In South Australia',
+    icon: 'tag',
+    question: 'How are you selling?',
+    choices: [
+      ['agent', 'Through a real estate agent', 'Agent-handled sale & contract preparation'],
+      ['private', 'Selling privately', 'Private contract & Form 1 preparation'],
+      ['unsure', 'I’m not sure yet', 'Still exploring sale options'],
+    ],
+  },
+  transfer: {
+    title: 'Family transfer',
+    sub: 'Between spouses or relatives',
+    icon: 'transfer',
+    question: 'Who is the transfer between?',
+    choices: [
+      ['spouse', 'Current spouses or partners', 'Matrimonial or de facto property transfer'],
+      ['family', 'Family members (Parent / Child)', 'Intergenerational or relative transfer'],
+      ['unsure', 'Other or not sure yet', 'Ask our conveyancers to confirm'],
+    ],
+  },
 };
 
 function renderHeroQuoteCard() {
@@ -56,19 +87,21 @@ function renderHeroQuoteCard() {
   if (!container) return;
 
   const currentService = heroServices[heroForm.service] || heroServices.buy;
+  const currentChoiceObj = currentService.choices.find(([k]) => k === heroForm.choice) || currentService.choices[0];
+  const choiceLabel = currentChoiceObj[1];
 
   if (heroForm.step === 1) {
     container.innerHTML = `
       <div class="hero-form-step">
         <div class="hero-form-top">
           <div>
-            <h3 class="hero-form-heading">Get your quote</h3>
-            <p class="hero-form-sub">Takes about a minute. No payment needed.</p>
+            <h3 class="hero-form-heading">Enquiry Form</h3>
+            <p class="hero-form-sub">Takes about a minute · No payment needed</p>
           </div>
-          <span class="hero-form-step-badge">Step 1 of 2</span>
+          <span class="hero-form-step-badge">Step 1 of 3</span>
         </div>
         <div class="hero-form-progress" aria-hidden="true">
-          <div class="hero-progress-fill" style="width: 50%;"></div>
+          <div class="hero-progress-fill" style="width: 33.3%;"></div>
         </div>
         <p class="hero-form-question">What do you need help with?</p>
         <div class="hero-form-options" role="radiogroup" aria-label="What do you need help with?">
@@ -97,37 +130,76 @@ function renderHeroQuoteCard() {
           <button type="button" class="hero-form-back-btn" data-hero-back aria-label="Back to step 1">
             ${icon('chevron-left')} Back
           </button>
-          <span class="hero-form-step-badge">Step 2 of 2</span>
+          <span class="hero-form-step-badge">Step 2 of 3</span>
+        </div>
+        <div class="hero-form-progress" aria-hidden="true">
+          <div class="hero-progress-fill" style="width: 66.6%;"></div>
+        </div>
+        <div class="hero-form-selection-summary">
+          <span class="hero-summary-label">Service</span>
+          <span class="hero-summary-val">${currentService.title}</span>
+        </div>
+        <p class="hero-form-question">${currentService.question}</p>
+        <div class="hero-form-options" role="radiogroup" aria-label="${currentService.question}">
+          ${currentService.choices.map(([key, label, sub]) => `
+            <button type="button" class="hero-opt-btn ${heroForm.choice === key ? 'selected' : ''}" data-hero-choice="${key}" role="radio" aria-checked="${heroForm.choice === key}">
+              <span class="hero-opt-text">
+                <strong>${label}</strong>
+                <small>${sub}</small>
+              </span>
+              <span class="hero-opt-radio">
+                ${heroForm.choice === key ? icon('check') : ''}
+              </span>
+            </button>
+          `).join('')}
+        </div>
+        <p class="hero-form-footer">
+          Prefer to talk? <a href="tel:+61870769899">Call 08 7076 9899</a>
+        </p>
+      </div>
+    `;
+  } else if (heroForm.step === 3) {
+    container.innerHTML = `
+      <div class="hero-form-step">
+        <div class="hero-form-top">
+          <button type="button" class="hero-form-back-btn" data-hero-back aria-label="Back to step 2">
+            ${icon('chevron-left')} Back
+          </button>
+          <span class="hero-form-step-badge">Step 3 of 3</span>
         </div>
         <div class="hero-form-progress" aria-hidden="true">
           <div class="hero-progress-fill" style="width: 100%;"></div>
         </div>
         <div class="hero-form-selection-summary">
-          <span class="hero-summary-label">Selected service</span>
-          <span class="hero-summary-val">${currentService.title}</span>
+          <span class="hero-summary-label">Selected</span>
+          <span class="hero-summary-val">${currentService.title} · ${choiceLabel}</span>
         </div>
-        <form class="hero-step-2-fields" data-hero-form="contact" novalidate>
+        <form class="hero-step-3-fields" data-hero-form="contact" novalidate>
           <label class="hero-field">
-            <span>Full name</span>
-            <input type="text" name="name" value="${esc(heroForm.contact.name)}" placeholder="e.g. Sarah Jenkins" autocomplete="name" required />
+            <span>Name</span>
+            <input type="text" name="name" value="${esc(heroForm.contact.name)}" placeholder="Your name" autocomplete="name" required />
             <span class="hero-field-error" id="hero-name-error" ${heroForm.errors.name ? '' : 'hidden'}>${esc(heroForm.errors.name || '')}</span>
           </label>
           <label class="hero-field">
-            <span>Australian phone number</span>
-            <input type="tel" name="phone" value="${esc(heroForm.contact.phone)}" placeholder="e.g. 0412 345 678" autocomplete="tel" required />
+            <span>Email</span>
+            <input type="email" name="email" value="${esc(heroForm.contact.email)}" placeholder="Your email address" autocomplete="email" required />
+            <span class="hero-field-error" id="hero-email-error" ${heroForm.errors.email ? '' : 'hidden'}>${esc(heroForm.errors.email || '')}</span>
+          </label>
+          <label class="hero-field">
+            <span>Phone</span>
+            <input type="tel" name="phone" value="${esc(heroForm.contact.phone)}" placeholder="Phone number (e.g. 0412 345 678)" autocomplete="tel" required />
             <span class="hero-field-error" id="hero-phone-error" ${heroForm.errors.phone ? '' : 'hidden'}>${esc(heroForm.errors.phone || '')}</span>
           </label>
           <label class="hero-field">
-            <span>Email address</span>
-            <input type="email" name="email" value="${esc(heroForm.contact.email)}" placeholder="name@example.com" autocomplete="email" required />
-            <span class="hero-field-error" id="hero-email-error" ${heroForm.errors.email ? '' : 'hidden'}>${esc(heroForm.errors.email || '')}</span>
+            <span>Questions (optional)</span>
+            <textarea name="notes" placeholder="Any specific questions about your transaction?">${esc(heroForm.contact.notes || '')}</textarea>
           </label>
           <label class="hero-checkbox">
             <input type="checkbox" name="callback" ${heroForm.contact.callback ? 'checked' : ''} />
-            <span>I’d like a conveyancer to call me to answer questions</span>
+            <span>I’d like a conveyancer to call me</span>
           </label>
           <button type="submit" class="hero-form-submit-btn">
-            Get My Conveyancing Quote ${icon('arrow')}
+            Submit
           </button>
         </form>
         <p class="hero-form-footer">
@@ -135,7 +207,7 @@ function renderHeroQuoteCard() {
         </p>
       </div>
     `;
-  } else if (heroForm.step === 3) {
+  } else if (heroForm.step === 4) {
     container.innerHTML = `
       <div class="hero-form-step">
         <div class="hero-result-header">
@@ -146,7 +218,7 @@ function renderHeroQuoteCard() {
           </div>
         </div>
         <div class="hero-result-service-badge">
-          ${icon(currentService.icon)} ${currentService.title} · South Australia
+          ${icon(currentService.icon)} ${currentService.title} · ${choiceLabel}
         </div>
         <div class="hero-result-breakdown">
           <div class="hero-breakdown-row">
@@ -169,7 +241,7 @@ function renderHeroQuoteCard() {
         </ul>
         <div class="hero-result-actions">
           <a href="tel:+61870769899" class="hero-form-submit-btn">
-            ${icon('phone')} Call Our Adelaide Team: 08 7076 9899
+            ${icon('phone')} Call Adelaide Office: 08 7076 9899
           </a>
           <button type="button" class="hero-result-reset-btn" data-hero-reset>
             Calculate another quote
@@ -364,7 +436,7 @@ function toggleMenu(open) {
   $('#nav-links').classList.toggle('open', open);
 }
 listen(document, 'click', (event) => {
-  // Step 1: Click on option -> ONE CLICK IMMEDIATELY ADVANCES TO STEP 2 (NO CONTINUE BUTTON)
+  // Step 1: Click on service option -> ONE CLICK ADVANCES TO STEP 2
   const heroOpt = event.target.closest('[data-hero-service]');
   if (heroOpt) {
     event.preventDefault();
@@ -385,16 +457,40 @@ listen(document, 'click', (event) => {
     setTimeout(() => {
       heroForm.step = 2;
       renderHeroQuoteCard();
+    }, 130);
+    return;
+  }
+
+  // Step 2: Click on 1-million / property choice -> ONE CLICK ADVANCES TO STEP 3
+  const heroChoice = event.target.closest('[data-hero-choice]');
+  if (heroChoice) {
+    event.preventDefault();
+    const ch = heroChoice.dataset.heroChoice;
+    heroForm.choice = ch;
+    heroForm.errors = {};
+    const optionsParent = heroChoice.closest('.hero-form-options');
+    if (optionsParent) {
+      optionsParent.querySelectorAll('.hero-opt-btn').forEach((btn) => {
+        const isSelected = btn === heroChoice;
+        btn.classList.toggle('selected', isSelected);
+        btn.setAttribute('aria-checked', String(isSelected));
+        const radio = btn.querySelector('.hero-opt-radio');
+        if (radio) radio.innerHTML = isSelected ? icon('check') : '';
+      });
+    }
+    setTimeout(() => {
+      heroForm.step = 3;
+      renderHeroQuoteCard();
       const firstField = document.querySelector('#hero-quote-card input[name="name"]');
       if (firstField) firstField.focus();
     }, 130);
     return;
   }
 
-  // Step 2: Back button -> REVERTS TO STEP 1
+  // Back button -> REVERTS TO PREVIOUS STEP
   if (event.target.closest('[data-hero-back]')) {
     event.preventDefault();
-    heroForm.step = 1;
+    heroForm.step = Math.max(1, heroForm.step - 1);
     heroForm.errors = {};
     renderHeroQuoteCard();
     return;
@@ -404,7 +500,8 @@ listen(document, 'click', (event) => {
   if (event.target.closest('[data-hero-reset]')) {
     event.preventDefault();
     heroForm.step = 1;
-    heroForm.contact = { name: '', phone: '', email: '', callback: true };
+    heroForm.choice = 'below';
+    heroForm.contact = { name: '', phone: '', email: '', notes: '', callback: true };
     heroForm.errors = {};
     renderHeroQuoteCard();
     return;
@@ -511,19 +608,17 @@ listen(document, 'submit', (event) => {
     const name = (values.name || '').trim();
     const phone = (values.phone || '').trim();
     const email = (values.email || '').trim();
+    const notes = (values.notes || '').trim();
     const callback = Boolean(values.callback);
 
-    if (!name) errors.name = 'Enter your full name.';
-    if (!phone) errors.phone = 'Enter an Australian mobile number.';
-    else if (!/^(?:04|\+?614|\d{8,12})/.test(phone.replace(/[\s()-]/g, ''))) {
-      errors.phone = 'Enter a valid Australian mobile or landline number.';
-    }
+    if (!name) errors.name = 'Enter your name.';
     if (!email) errors.email = 'Enter your email address.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.email = 'Enter a valid email address like name@example.com.';
+      errors.email = 'Enter a valid email address.';
     }
+    if (!phone) errors.phone = 'Enter your phone number.';
 
-    heroForm.contact = { name, phone, email, callback };
+    heroForm.contact = { name, phone, email, notes, callback };
     heroForm.errors = errors;
 
     if (Object.keys(errors).length > 0) {
@@ -534,14 +629,14 @@ listen(document, 'submit', (event) => {
       return;
     }
 
-    heroForm.step = 3;
+    heroForm.step = 4;
     workflow.createQuote({
       service: heroForm.service,
-      choice: 'unsure',
+      choice: heroForm.choice,
       contact: { ...heroForm.contact },
       callback: heroForm.contact.callback,
     });
-    track('quote_displayed', { service: heroForm.service, source: 'hero_card' });
+    track('quote_displayed', { service: heroForm.service, choice: heroForm.choice, source: 'hero_card' });
     renderHeroQuoteCard();
     return;
   }
