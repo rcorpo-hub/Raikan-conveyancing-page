@@ -7,8 +7,8 @@ export interface ChatAction {
 }
 export interface BotResponse { text: string; actions?: ChatAction[]; suggestedFollowups?: string[]; }
 export interface MessageContext { serviceCategory?: string; }
-export const INITIAL_SUGGESTIONS = ['What is conveyancing?', 'Buying a property', 'Selling a property', 'Fees and extra costs', 'Contact the team'];
-const quote = (service = 'buying'): ChatAction => ({ label: 'Prepare an enquiry', actionType: 'open-quote', payload: service });
+export const INITIAL_SUGGESTIONS = ['Get your quote', 'What is conveyancing?', 'Buying a property', 'Selling a property', 'Fees and extra costs', 'Contact the team'];
+const quote = (service = 'buying'): ChatAction => ({ label: 'Get your quote', actionType: 'open-quote', payload: service });
 const call: ChatAction = { label: 'Call the team', actionType: 'call', payload: siteConfig.phoneRaw };
 const process: ChatAction = { label: 'Watch the four steps', actionType: 'open-page', payload: 'how-it-works' };
 
@@ -52,7 +52,14 @@ export function generateBotResponse(input: string, context: MessageContext = {})
     return response("**You can contact the team directly.**\n\n- Phone: [08 7076 9899](tel:0870769899)\n- Email: [info@rcorpo.com](mailto:info@rcorpo.com)\n- Office area: Broadview, Adelaide SA 5083. Ask for appointment details before visiting.\n\nThe hours listed on this site are Monday–Friday, 9 am–5 pm ACST. This chat is automated and does not show live staff availability.", [call, quote(service)], ['Fees and extra costs', 'How does the process work?']);
   }
   if (/what services|which services|services.*provide/.test(q)) return response("**The website lists these conveyancing services.**\n\n- Buying or selling a property.\n- Family property transfers.\n- Contract and pre-purchase advice.\n- Land divisions.\n- Private contract preparation.\n\nTell the team what you need so they can confirm the work and fee.", [quote(service), call], ['Buying a property', 'Selling a property', 'Fees and extra costs']);
-  if (/online|digital/.test(q)) return response("**You can explore fees and prepare an enquiry online in this preview.**\n\nThe form opens an email draft for you to review and send. It does not deliver an enquiry automatically. Ask the team how your documents and identity checks will be handled.", [quote(service), call], ['How do I send my contract?', 'Contact the team']);
+  if (/online|digital/.test(q)) return response("**You can explore fees and calculate your instant quote online.**\n\nOur fixed professional fee is $660 including GST. Use our interactive quote calculator to view your itemised breakdown including South Australian government charges.", [quote(service), call], ['Buying a property', 'Selling a property', 'Fees and extra costs']);
+  if (/get.*quote|calculate.*quote|instant quote|^quote\b/.test(q)) {
+    return response(
+      "**Get your instant itemised quote in 30 seconds.**\n\nOur fixed professional fee is $660 including GST. Select your transaction type on our quote form to calculate your itemised quote with all statutory government charges.",
+      [quote(service), call],
+      ['Buying a property', 'Selling a property', 'Fees and extra costs']
+    );
+  }
   if (/cost|fee|price|quote|how much/.test(q)) {
     const tailored = service === 'family-transfer';
     return response(tailored

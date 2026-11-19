@@ -60,6 +60,23 @@ export function RaikanChatbot({ onOpenQuote, onNavigateHowItWorks, onOpenVoi }: 
       { id: crypto.randomUUID(), sender: 'assistant', ...response }]);
     setInput('');
   }
+  function handleSuggestionClick(text: string) {
+    if (/get\s*your\s*quote|instant\s*quote|^quote\b/i.test(text)) {
+      const question = text.trim();
+      const response = generateBotResponse(question, context.current);
+      setMessages(previous => [
+        ...previous,
+        { id: crypto.randomUUID(), sender: 'user', text: question },
+        { id: crypto.randomUUID(), sender: 'assistant', ...response },
+      ]);
+      closeChat(false);
+      requestAnimationFrame(() => {
+        onOpenQuote?.(context.current.serviceCategory || 'buying');
+      });
+      return;
+    }
+    send(text);
+  }
   function actionClick(action: ChatAction) {
     closeChat(false);
     requestAnimationFrame(() => {
@@ -96,8 +113,8 @@ export function RaikanChatbot({ onOpenQuote, onNavigateHowItWorks, onOpenVoi }: 
                 ? <a key={action.label} href={'tel:' + (action.payload || '0870769899')}><Phone size={15} />{action.label}</a>
                 : <button type="button" key={action.label} onClick={() => actionClick(action)}>{action.label}<ArrowRight size={15} /></button>
             )}</div>}
-            {!!message.suggestedFollowups?.length && <div className="chat-suggestions" aria-label="Suggested questions">{message.suggestedFollowups.slice(0, 5).map(text =>
-              <button type="button" key={text} onClick={() => send(text)}>{text}</button>
+            {!!message.suggestedFollowups?.length && <div className="chat-suggestions" aria-label="Suggested questions">{message.suggestedFollowups.map(text =>
+              <button type="button" key={text} onClick={() => handleSuggestionClick(text)}>{text}</button>
             )}</div>}
           </>}
         </div>)}

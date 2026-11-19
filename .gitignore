@@ -3,6 +3,9 @@ node_modules/
 /.pnp
 .pnp.js
 
+# Temporary files
+tmp/
+
 # Production build
 dist/
 build/

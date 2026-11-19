@@ -9,7 +9,9 @@ The official, conversion-focused web application for **Raikan Corporation Convey
 Follow these simple steps to run the website locally on your computer:
 
 ### 1. Prerequisites
+
 Ensure you have **Node.js** (version 18 or higher) installed on your system.
+
 - Check Node version:
   ```bash
   node -v
@@ -18,12 +20,15 @@ Ensure you have **Node.js** (version 18 or higher) installed on your system.
   ```bash
   npm -v
   ```
+
 *(If Node.js is not installed, download and install the LTS version from [nodejs.org](https://nodejs.org/).)*
 
 ---
 
 ### 2. Navigate to the Project Folder
+
 Open your terminal (PowerShell, Command Prompt, or Terminal) and change into the project root directory:
+
 ```bash
 cd path/to/Raiken_Website_V1
 ```
@@ -31,7 +36,9 @@ cd path/to/Raiken_Website_V1
 ---
 
 ### 3. Install Dependencies
+
 Install all required packages from `package.json`:
+
 ```bash
 npm install
 ```
@@ -39,12 +46,15 @@ npm install
 ---
 
 ### 4. Start the Local Development Server
+
 Launch the Vite development server:
+
 ```bash
 npm run dev
 ```
 
 Once the server starts, you will see output similar to:
+
 ```
   VITE v6.4.6  ready in 628 ms
 
@@ -55,10 +65,13 @@ Once the server starts, you will see output similar to:
 ---
 
 ### 5. View in Your Browser
+
 Open your web browser (Chrome, Edge, Safari, Firefox) and navigate to:
+
 ```
 http://localhost:5173/
 ```
+
 *(Note: If port `5173` is already in use by another app, Vite will automatically serve on `http://localhost:5174/` as indicated in the terminal).*
 
 ---
@@ -66,20 +79,27 @@ http://localhost:5173/
 ## 🛠️ Additional Commands
 
 ### Build for Production
+
 To typecheck with TypeScript and create an optimized, minified production build:
+
 ```bash
 npm run build
 ```
+
 The compiled, production-ready static files will be generated in the `dist/` folder.
 
 ### Preview Production Build
+
 To preview the production build locally before deployment:
+
 ```bash
 npm run preview
 ```
 
 ### TypeScript Validation
+
 To run the TypeScript type checker without building:
+
 ```bash
 npx tsc --noEmit
 ```

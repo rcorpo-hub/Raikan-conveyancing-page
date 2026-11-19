@@ -17,20 +17,36 @@ export const services = {
   },
 };
 
-// Only enter approved amounts in Australian cents against service and choice.
-// For live use, apply the approved rules on the server and return a versioned quote.
-const approvedPricing = Object.freeze({});
-
-export function getBreakdown(service, choice) {
-  const pricing = approvedPricing[service]?.[choice];
-  const money = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
-  const format = (cents, fallback) => Number.isSafeInteger(cents) && cents >= 0
-    ? money.format(cents / 100)
-    : fallback;
+export const feeVersion = '2026-11-client-supplied-v1';
+export const professionalFee = '$660 + GST';
+export const governmentCalculator = 'https://www.sa.gov.au/topics/housing/planning-and-property/property-transfer-fee-calculator';
+export const dutyCalculator = 'https://www.revenuesa.sa.gov.au/stamp-duty-land/calculate-stamp-duty';
+export const commonCharges = [
+  ['File fee', '$88.00'],
+  ['PEXA electronic settlement fee', '$146.30'],
+  ['Identity check', '$50.00 per person'],
+  ['AML / CTF check', '$25.00 per person'],
+];
+// Third-party amounts are the client's supplied guide figures, not a complete settlement total.
+// No tax assumptions or aggregate total are applied to these amounts.
+export function getBreakdown(service) {
+  if (!['buy', 'sell'].includes(service)) return [['Conveyancing service', 'Personal quote required'], ['Other charges', 'Confirmed for your transaction']];
   return [
-    ['Professional fee', format(pricing?.professional, 'Pending confirmation')],
-    ['GST', format(pricing?.gst, 'Pending confirmation')],
-    ['Third-party costs', format(pricing?.disbursements, 'Depends on the property')],
-    ['Total (AUD)', format(pricing?.total, 'To be confirmed')],
+    ['Our conveyancing fee', professionalFee],
+    ...commonCharges,
+    ...(service === 'buy' ? [
+      ['Mortgage registration (if needed)', '$204.00'],
+      ['Stamp duty & lodgement fees', 'As charged'],
+    ] : [
+      ['Mortgage discharge (if needed)', '$204.00'],
+      ['Special water meter reading', '$25.00'],
+      ['Form 1 & searches', 'Separate cost, if needed'],
+    ]),
+    ['Special orders (if needed)', 'Quoted separately'],
+    ['Settlement adjustments', 'Based on your property & settlement date'],
   ];
+}
+
+export function getOptionalCharges(service) {
+  return service === 'buy' ? [['Priority notice (optional)', '$38.00'], ['Copy of new title (optional)', '$38.00']] : [];
 }

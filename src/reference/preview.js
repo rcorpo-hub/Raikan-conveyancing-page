@@ -1,6 +1,8 @@
+import { createClientMessages } from './messages.js';
+import { feeVersion, getBreakdown } from './config.js';
 let lead;
 const analytics = new EventTarget();
-const allowedAttributionKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid'];
+const allowedAttributionKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid'];
 const query = new URLSearchParams(location.search);
 const attribution = Object.fromEntries(allowedAttributionKeys.flatMap((key) => {
   const value = query.get(key);
@@ -17,6 +19,11 @@ export function track(name, { service, step, entry } = {}) {
 export const workflow = {
   createQuote({ service, choice, contact, callback }) {
     lead = { reference: 'DEMO-' + crypto.randomUUID().slice(0, 8).toUpperCase(), service, choice, contact, callback, attribution, createdAt: Date.now() };
+    lead.feeVersion = feeVersion;
+    lead.feeBreakdown = getBreakdown(service);
+    lead.communicationConsent = { purpose: 'quote_email_sms_and_enquiry_followup', requestedAt: lead.createdAt };
+    lead.deliveryStatus = 'preview_only';
+    lead.messages = createClientMessages(lead);
     track('lead_created', { service });
     track('quote_generated', { service });
     if (callback) track('callback_requested', { service, entry: 'quote' });
