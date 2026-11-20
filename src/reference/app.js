@@ -1,5 +1,5 @@
 import { services } from './config.js';
-import { track, workflow } from './preview.js';
+import { track, workflow, enhanceForms, showFormError, deliveryCopy } from './api.js';
 
 export function mountReference() {
   const controller = new AbortController();
@@ -73,9 +73,10 @@ export function mountReference() {
 
   async function detectCountryByIP() {
     try {
-      const res = await fetch('https://ipapi.co/json/', { cache: 'no-store' });
+      const res = await fetch('https://ipapi.co/json/', { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error('ipapi failed');
       const data = await res.json();
+      if (controller.signal.aborted) return;
       const cCode = (data.country_code || data.country || '').toUpperCase();
       if (cCode && !userCountryLocked) {
         const found = countries.find((c) => c.code === cCode);
@@ -92,10 +93,12 @@ export function mountReference() {
         renderHeroQuoteCard();
       }
     } catch {
+      if (controller.signal.aborted) return;
       try {
-        const res2 = await fetch('https://api.country.is');
+        const res2 = await fetch('https://api.country.is', { signal: controller.signal });
         if (!res2.ok) return;
         const d2 = await res2.json();
+        if (controller.signal.aborted) return;
         const c2 = (d2.country || '').toUpperCase();
         if (c2 && !userCountryLocked) {
           const found = countries.find((c) => c.code === c2);
@@ -124,21 +127,21 @@ export function mountReference() {
       title: 'Buying in SA',
       question: 'Buying in SA',
       choices: [
-        ['below', 'Property Price Less than 1 million'],
-        ['above', 'Property Price more than 1 million'],
+        ['below', 'Property price up to $1 million'],
+        ['above', 'Property price over $1 million'],
       ],
     },
     sell: {
       title: 'Selling in SA',
-      question: 'Selling In SA',
+      question: 'Selling in SA',
       choices: [
-        ['private', 'Selling Privately'],
-        ['agent', 'Selling through agent'],
+        ['private', 'Selling privately'],
+        ['agent', 'Selling through an agent'],
       ],
     },
     transfer: {
-      title: 'Family Transfer',
-      question: 'Family Transfer',
+      title: 'Family transfer',
+      question: 'Family transfer',
       choices: [
         ['spouse', 'Transfer with current spouse'],
         ['former_spouse', 'Transfer with former spouse'],
@@ -147,64 +150,36 @@ export function mountReference() {
     },
   };
 
-  function renderServicePills(currentServiceKey) {
-    return `
-    <div class="hero-service-pills" role="tablist" aria-label="Conveyancing service">
-      <button type="button" class="hero-pill-btn ${currentServiceKey === 'buy' ? 'active' : ''}" data-hero-pill="buy" role="tab" aria-selected="${currentServiceKey === 'buy'}">Buying</button>
-      <button type="button" class="hero-pill-btn ${currentServiceKey === 'sell' ? 'active' : ''}" data-hero-pill="sell" role="tab" aria-selected="${currentServiceKey === 'sell'}">Selling</button>
-      <button type="button" class="hero-pill-btn ${currentServiceKey === 'transfer' ? 'active' : ''}" data-hero-pill="transfer" role="tab" aria-selected="${currentServiceKey === 'transfer'}">Other</button>
-    </div>
-  `;
-  }
-
-  function validateStep1() {
-    if (!heroForm.choice) {
-      heroForm.errors.choice = 'Please choose an option above.';
-      return false;
-    }
-    delete heroForm.errors.choice;
-    return true;
-  }
-
-  function validateStep2(form) {
+  function validateHeroForm(form) {
     const values = form ? Object.fromEntries(new FormData(form)) : {};
     const errors = {};
     const name = ((values.name !== undefined ? values.name : heroForm.contact.name) || '').trim();
-    const phone = ((values.phone !== undefined ? values.phone : heroForm.contact.phone) || '').trim();
     const email = ((values.email !== undefined ? values.email : heroForm.contact.email) || '').trim();
+    const phone = ((values.phone !== undefined ? values.phone : heroForm.contact.phone) || '').trim();
 
-    if (!name) errors.name = 'Enter your full name.';
-    if (!email) errors.email = 'Enter your email address.';
+    if (!name) errors.name = 'Please enter your name.';
+    if (!email) errors.email = 'Please enter your email address.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      errors.email = 'Enter a valid email address.';
+      errors.email = 'Please enter a valid email address.';
     }
     if (!phone) {
-      errors.phone = 'Enter your mobile number.';
+      errors.phone = 'Please enter your mobile number.';
     } else if (!/^[\d\s\-().+]{6,20}$/.test(phone)) {
-      errors.phone = 'Enter a valid mobile number.';
+      errors.phone = 'Please enter a valid mobile number.';
     }
 
     heroForm.contact.name = name;
     heroForm.contact.email = email;
     heroForm.contact.phone = phone;
+    if (values.propertyValue !== undefined) {
+      heroForm.contact.propertyValue = (values.propertyValue || '').trim();
+    }
+    if (values.notes !== undefined) {
+      heroForm.contact.notes = (values.notes || '').trim();
+    }
     heroForm.errors = errors;
 
     return Object.keys(errors).length === 0;
-  }
-
-  function renderHeroTabs() {
-    return `
-    <div class="hero-flow-tabs" role="tablist" aria-label="Quote steps">
-      <button type="button" class="hero-flow-tab ${heroForm.step === 1 ? 'active' : ''} ${heroForm.step > 1 ? 'completed' : ''}" data-hero-tab="1" role="tab" aria-selected="${heroForm.step === 1}">
-        <span class="hero-tab-num">${heroForm.step > 1 ? icon('check') : '1'}</span>
-        <span class="hero-tab-label">Property &amp; Service</span>
-      </button>
-      <button type="button" class="hero-flow-tab ${heroForm.step === 2 ? 'active' : ''}" data-hero-tab="2" role="tab" aria-selected="${heroForm.step === 2}">
-        <span class="hero-tab-num">2</span>
-        <span class="hero-tab-label">Your Details</span>
-      </button>
-    </div>
-    `;
   }
 
   function renderHeroQuoteCard() {
@@ -218,7 +193,6 @@ export function mountReference() {
     // Step 4: Confirmation screen
     if (heroForm.step === 4) {
       const valText = heroForm.contact.propertyValue || choiceLabel || currentService.title;
-      const fullPhone = userCountry.dial + ' ' + (heroForm.contact.phone || '');
       container.innerHTML = `
       <div class="hero-form-step">
         <div class="hero-result-header">
@@ -231,14 +205,9 @@ export function mountReference() {
         <div class="hero-result-service-badge">
           ${currentService.title} · ${esc(valText)}
         </div>
-        <div class="hero-result-breakdown">
-          <div class="hero-breakdown-row"><span>Professional fee</span><strong>$600</strong></div>
-          <div class="hero-breakdown-row"><span>GST (10%)</span><strong>$60</strong></div>
-          <div class="hero-breakdown-row total"><span>Total fee</span><strong class="price-highlight">$660 incl. GST</strong></div>
-        </div>
         <p class="hero-form-disclaimer" style="text-align:left; margin-top:12px;">
-          Reference: <strong>${esc(heroForm.lead?.reference || 'SA-' + Math.floor(100000 + Math.random() * 900000))}</strong><br>
-          We’ll email your itemised quote and send an SMS link to <strong>${esc(fullPhone)}</strong>. No obligation to proceed.
+          Reference: <strong>${esc(heroForm.lead?.reference || '')}</strong><br>
+          ${esc(deliveryCopy(heroForm.lead))}
         </p>
         <div class="hero-result-actions">
           <a href="tel:+61870769899" class="hero-form-submit-btn">
@@ -253,161 +222,98 @@ export function mountReference() {
       return;
     }
 
-    // Step 1: Property & Service Selection
-    if (heroForm.step === 1) {
-      const defaultVal = heroForm.contact.propertyValue || '';
-      container.innerHTML = `
-      <div class="hero-form-step">
-        ${renderHeroTabs()}
-
-        <div class="hero-form-header-row">
-          <h3 class="hero-form-heading">Get your instant quote</h3>
-        </div>
-        <p class="hero-form-sub-intro">Select your transaction type to calculate your itemised quote in 30 seconds.</p>
-
-        <form class="hero-step-fields hero-page-1-form" data-hero-form="step1" novalidate>
-          <!-- Primary Service Selection Cards with Icons -->
-          <div class="hero-radio-section">
-            <p class="hero-radio-heading">I am looking conveyancing service for:</p>
-            <div class="hero-service-card-group" role="radiogroup" aria-label="Conveyancing service">
-              <label class="hero-service-card ${heroForm.service === 'buy' ? 'selected' : ''}">
-                <input type="radio" name="heroServiceRadio" value="buy" ${heroForm.service === 'buy' ? 'checked' : ''} />
-                <span class="hero-service-card-icon">${icon('house')}</span>
-                <span class="hero-service-card-label">Buying in SA</span>
-              </label>
-              <label class="hero-service-card ${heroForm.service === 'sell' ? 'selected' : ''}">
-                <input type="radio" name="heroServiceRadio" value="sell" ${heroForm.service === 'sell' ? 'checked' : ''} />
-                <span class="hero-service-card-icon">${icon('tag')}</span>
-                <span class="hero-service-card-label">Selling in SA</span>
-              </label>
-              <label class="hero-service-card ${heroForm.service === 'transfer' ? 'selected' : ''}">
-                <input type="radio" name="heroServiceRadio" value="transfer" ${heroForm.service === 'transfer' ? 'checked' : ''} />
-                <span class="hero-service-card-icon">${icon('transfer')}</span>
-                <span class="hero-service-card-label">Family Transfer</span>
-              </label>
-            </div>
-          </div>
-
-          <!-- Dynamic Sub-Options Radio Group -->
-          <div class="hero-radio-sub-section">
-            <p class="hero-radio-sub-heading">${currentService.question}</p>
-            <div class="hero-radio-options-list ${heroForm.service === 'transfer' ? 'stacked' : ''}">
-              ${currentService.choices.map(([key, label]) => `
-                <label class="hero-radio-item ${heroForm.choice === key ? 'checked' : ''}">
-                  <input type="radio" name="heroChoiceRadio" value="${key}" ${heroForm.choice === key ? 'checked' : ''} />
-                  <span>${label}</span>
-                </label>
-              `).join('')}
-            </div>
-            ${heroForm.errors.choice ? `<p class="hero-field-error" style="margin-top:4px">${esc(heroForm.errors.choice)}</p>` : ''}
-          </div>
-
-          <!-- Property Price (if known) -->
-          <label class="hero-field">
-            <span>Property Price (if known):</span>
-            <input type="text" name="propertyValue" value="${esc(defaultVal)}" placeholder="e.g. $850,000" maxlength="60" />
-            <small class="hero-field-helper">Not sure yet? Leave blank.</small>
-          </label>
-
-          <button type="submit" class="hero-form-submit-btn">
-            Continue to my quote ${icon('arrow')}
-          </button>
-
-          <p class="hero-form-disclaimer">
-            Takes 30 seconds · No payment or obligation required.
-          </p>
-
-          <p class="hero-form-footer">
-            Prefer to talk? <a href="tel:+61870769899">Call 08 7076 9899</a>
-          </p>
-        </form>
-      </div>
-      `;
-      return;
-    }
-
-    // Step 2: Page 2 - Your Details
-    const summaryVal = heroForm.contact.propertyValue ? `${choiceLabel} (${heroForm.contact.propertyValue})` : choiceLabel;
-
+    // Single-step Unified Form as per user screenshot
     container.innerHTML = `
     <div class="hero-form-step">
-      ${renderHeroTabs()}
-
-      <div class="hero-page-2-top">
-        <button type="button" class="hero-back-link" data-hero-back>
-          ${icon('chevron-left')} Back to property details
-        </button>
-        <span class="hero-user-badge">
-          ${currentService.title} · ${esc(summaryVal)}
-        </span>
-      </div>
-
       <div class="hero-form-header-row">
-        <h3 class="hero-form-heading">Where should we send your quote?</h3>
+        <h3 class="hero-form-heading">Get your instant quote</h3>
       </div>
-      <p class="hero-form-sub-intro">We’ll email you the total cost for your conveyancing: our $660 fixed professional fee (including 10% GST) plus all extra statutory government charges and search disbursements itemised in full.</p>
 
-      <form class="hero-step-fields hero-page-2-form" data-hero-form="step2" novalidate>
+      <!-- Service Type Pills (Buying in SA | Selling in SA | Family transfer) -->
+      <div class="hero-service-pills-row" role="tablist" aria-label="Transaction type">
+        <button type="button" class="hero-service-pill-btn ${heroForm.service === 'buy' ? 'active' : ''}" data-hero-pill="buy" role="tab" aria-selected="${heroForm.service === 'buy'}">
+          Buying in SA
+        </button>
+        <button type="button" class="hero-service-pill-btn ${heroForm.service === 'sell' ? 'active' : ''}" data-hero-pill="sell" role="tab" aria-selected="${heroForm.service === 'sell'}">
+          Selling in SA
+        </button>
+        <button type="button" class="hero-service-pill-btn ${heroForm.service === 'transfer' ? 'active' : ''}" data-hero-pill="transfer" role="tab" aria-selected="${heroForm.service === 'transfer'}">
+          Family transfer
+        </button>
+      </div>
+
+      <form class="hero-step-fields hero-single-form" data-hero-form="quote" novalidate>
+        <!-- Two Column Inputs: Name & Email -->
         <div class="hero-field-row">
           <label class="hero-field">
             <span>Name *</span>
-            <input type="text" name="name" value="${esc(heroForm.contact.name)}" placeholder="Your full name" autocomplete="name" maxlength="110" aria-invalid="${Boolean(heroForm.errors.name)}" aria-describedby="hero-name-error" required />
+            <input type="text" name="name" value="${esc(heroForm.contact.name)}" placeholder="" autocomplete="name" maxlength="110" aria-invalid="${Boolean(heroForm.errors.name)}" aria-describedby="hero-name-error" required />
             <span class="hero-field-error" id="hero-name-error" ${heroForm.errors.name ? '' : 'hidden'}>${esc(heroForm.errors.name || '')}</span>
           </label>
 
           <label class="hero-field">
             <span>Email *</span>
-            <input type="email" name="email" value="${esc(heroForm.contact.email)}" placeholder="name@example.com" autocomplete="email" maxlength="254" aria-invalid="${Boolean(heroForm.errors.email)}" aria-describedby="hero-email-error" required />
+            <input type="email" name="email" value="${esc(heroForm.contact.email)}" placeholder="" autocomplete="email" maxlength="254" aria-invalid="${Boolean(heroForm.errors.email)}" aria-describedby="hero-email-error" required />
             <span class="hero-field-error" id="hero-email-error" ${heroForm.errors.email ? '' : 'hidden'}>${esc(heroForm.errors.email || '')}</span>
           </label>
         </div>
 
-        <label class="hero-field">
-          <span>Mobile number *</span>
-          <div class="hero-phone-group ${heroForm.errors.phone ? 'has-error' : ''}">
-            <div class="hero-flag-picker" title="Country: ${userCountry.name} (${userCountry.dial})">
-              <span class="hero-flag-emoji" aria-hidden="true">${userCountry.flag}</span>
-              <span class="hero-flag-dial">${userCountry.dial}</span>
-              <select name="countryCode" class="hero-flag-select" aria-label="Country dial code">
-                ${countries.map((c) => `
-                  <option value="${c.code}" ${c.code === userCountry.code ? 'selected' : ''}>
-                    ${c.flag} ${c.name} (${c.dial})
-                  </option>
-                `).join('')}
-              </select>
-              <span class="hero-flag-caret">${icon('chevron')}</span>
+        <!-- Two Column Inputs: Mobile & Property value -->
+        <div class="hero-field-row">
+          <label class="hero-field">
+            <span>Mobile *</span>
+            <div class="hero-phone-group ${heroForm.errors.phone ? 'has-error' : ''}">
+              <div class="hero-flag-picker" title="Country: ${userCountry.name} (${userCountry.dial})">
+                <span class="hero-flag-emoji" aria-hidden="true">${userCountry.flag}</span>
+                <span class="hero-flag-dial">${userCountry.dial}</span>
+                <select name="countryCode" class="hero-flag-select" aria-label="Country dial code">
+                  ${countries.map((c) => `
+                    <option value="${c.code}" ${c.code === userCountry.code ? 'selected' : ''}>
+                      ${c.flag} ${c.name} (${c.dial})
+                    </option>
+                  `).join('')}
+                </select>
+                <span class="hero-flag-caret">${icon('chevron')}</span>
+              </div>
+              <input type="tel" name="phone" value="${esc(heroForm.contact.phone)}" placeholder="" autocomplete="tel-national" maxlength="20" aria-invalid="${Boolean(heroForm.errors.phone)}" aria-describedby="hero-phone-error" required />
             </div>
-            <input type="tel" name="phone" value="${esc(heroForm.contact.phone)}" placeholder="Mobile number" autocomplete="tel-national" maxlength="20" aria-invalid="${Boolean(heroForm.errors.phone)}" aria-describedby="hero-phone-error" required />
+            <span class="hero-field-error" id="hero-phone-error" ${heroForm.errors.phone ? '' : 'hidden'}>${esc(heroForm.errors.phone || '')}</span>
+          </label>
+
+          <label class="hero-field">
+            <span>Property value (if known)</span>
+            <input type="text" name="propertyValue" value="${esc(heroForm.contact.propertyValue)}" placeholder="e.g. $850,000" maxlength="60" />
+            <small class="hero-field-helper">Not sure yet? Leave blank.</small>
+          </label>
+        </div>
+
+        <!-- Dynamic Service Radio Options based on selected pill -->
+        <div class="hero-service-choice-section">
+          <p class="hero-choice-category-heading">${currentService.question}</p>
+          <div class="hero-radio-choices-grid ${heroForm.service === 'transfer' ? 'transfer-grid' : 'two-col'}">
+            ${currentService.choices.map(([key, label]) => `
+              <label class="hero-radio-option-item ${heroForm.choice === key ? 'checked' : ''}">
+                <input type="radio" name="heroChoiceRadio" value="${key}" ${heroForm.choice === key ? 'checked' : ''} />
+                <span>${label}</span>
+              </label>
+            `).join('')}
           </div>
-          <span class="hero-field-error" id="hero-phone-error" ${heroForm.errors.phone ? '' : 'hidden'}>${esc(heroForm.errors.phone || '')}</span>
+        </div>
+
+        <!-- Questions (if any) -->
+        <label class="hero-field hero-field-full">
+          <span>Questions (if any)</span>
+          <textarea name="notes" placeholder="Ask us about your quote or conveyancing" rows="2">${esc(heroForm.contact.notes || '')}</textarea>
         </label>
 
-        <!-- Questions -->
-        <label class="hero-field">
-          <span>Questions (optional):</span>
-          <textarea name="notes" maxlength="2000" placeholder="Ask about cooling-off periods, contract clauses, or settlement dates" rows="2">${esc(heroForm.contact.notes || '')}</textarea>
-        </label>
-        
-        <label class="hero-checkbox">
-          <input type="checkbox" name="callback" ${heroForm.contact.callback ? 'checked' : ''} />
-          <span>I’d like a licensed conveyancer to call me</span>
-        </label>
-        
+        <!-- Submit Button -->
         <button type="submit" class="hero-form-submit-btn">
-          Send me my quote ${icon('arrow')}
+          Send me my quote
         </button>
-        
-        <p class="hero-form-disclaimer">
-          We’ll email you an itemised quote and SMS link.<br>
-          No obligation to proceed · Private and confidential.
-        </p>
-
-        <p class="hero-form-footer">
-          Prefer to talk? <a href="tel:+61870769899">Call 08 7076 9899</a>
-        </p>
       </form>
     </div>
     `;
+    enhanceForms(container);
   }
 
   function field({ name, label, value, type = 'text', autocomplete = '', required = true }) {
@@ -430,16 +336,16 @@ export function mountReference() {
     const service = services[state.service];
     const choiceName = service.choices.find(([key]) => key === state.choice)?.[1];
     const callbackOption = state.callback
-      ? '<p class="mini">Callback selected for this preview.</p>'
+      ? '<p class="mini">A callback has been requested.</p>'
       : '<button class="link" type="button" data-callback>Request a callback</button>';
     return `<header class="quote-confirmation">
       <span class="icon-tile">${pict('check-circle')}</span>
       <div>${heading('Thanks for your enquiry', 'Your quote is for email and SMS.')}</div>
     </header>
     <p class="quote-result-service">${service.label} · ${choiceName}</p>
-    <p class="quote-reference">Preview reference ${esc(state.lead.reference)} · South Australia</p>
+    <p class="quote-reference">Reference ${esc(state.lead.reference)} · South Australia</p>
     <p class="lead-in">Review your detailed quote by email and SMS before choosing to proceed.</p>
-    ${previewNote('Preview only. No email or SMS was sent and no callback has been booked.')}
+    ${previewNote(esc(deliveryCopy(state.lead)))}
     <div class="card-actions">
       <button class="button full" type="button" data-close>Done</button>
       <div class="quote-follow-up">
@@ -452,11 +358,11 @@ export function mountReference() {
 
   function onboarding() {
     return back('result') + heading('Let’s get things moving', 'Confirm your details and add a little about the property.')
-      + previewNote('Your interest is recorded for this preview. Formal engagement is a separate step.')
+      + previewNote('Your interest will be recorded. Formal engagement is a separate step.')
       + `<form class="form" data-form="onboarding" novalidate>${contactFields(true)}
        ${field({ name: 'suburb', label: 'Property suburb (optional)', value: state.onboarding.suburb, required: false })}
        ${field({ name: 'date', label: 'Expected settlement date (optional)', type: 'date', value: state.onboarding.date, required: false })}
-       <p class="mini">Edits are kept while this page stays open.</p>${submit('Complete preview onboarding')}</form>`;
+       <p class="mini">Edits are kept while this page stays open.</p>${submit('Save my details')}</form>`;
   }
 
   function propertyChoices() {
@@ -487,7 +393,7 @@ export function mountReference() {
       <div class="contact-grid">${contactFields(true)}</div>
     </fieldset>
     <label class="check-field"><input type="checkbox" name="callback" ${state.callback ? 'checked' : ''}> I’d like a conveyancer to call me.</label>
-    <div class="quote-submit">${submit('Request my quote')}<p class="mini">You’re asking Raikan to email and SMS your quote and contact you about this enquiry. No marketing sign-up.</p><p class="mini">${pict('lock')} Preview only · Nothing is sent or saved yet.</p></div>
+    <div class="quote-submit">${submit('Request my quote')}<p class="mini">You’re asking Raikan to email and SMS your quote and contact you about this enquiry. No marketing sign-up.</p><p class="mini">${pict('lock')} Your details are sent securely to Raikan.</p></div>
   </form>`;
   }
 
@@ -495,7 +401,7 @@ export function mountReference() {
     form: quoteForm,
     result,
     onboarding,
-    complete: () => heading('Thanks for completing the form', 'Your onboarding details are complete for this preview.')
+    complete: () => heading('Thanks for completing the form', 'Your details have been saved for our team to review.')
       + '<div class="card-actions"><button class="button full" type="button" data-close>Done</button><button class="link" type="button" data-stage="result">View my quote</button></div>',
   };
 
@@ -509,6 +415,7 @@ export function mountReference() {
     if (!dialog.open) dialog.showModal();
     dialog.scrollTop = 0;
     $('#dialog-title').focus({ preventScroll: true });
+    enhanceForms(dialogContent);
   }
 
   function showQuote(stage = state.stage) {
@@ -543,12 +450,12 @@ export function mountReference() {
     openDialog('Prefer to speak with us?', (dialog.classList.contains('quote-dialog') ? back('result') : '') + '<p class="lead-in">Try the callback form or call <a href="tel:+61870769899">08 7076 9899</a>.</p>'
       + `<form class="form" data-form="callback" novalidate>${contactFields(false)}
       <label class="field">Preferred time (optional)<select name="time"><option value="">Any time</option><option value="morning">Morning</option><option value="afternoon">Afternoon</option></select></label>
-      <p class="mini">Times are South Australian local time. Use sample contact details for this preview.</p>${submit('Request a callback')}</form>`);
+      <p class="mini">Times are South Australian local time.</p>${submit('Request a callback')}</form>`);
   }
 
   const info = {
-    privacy: ['Preview privacy', 'Use sample details to try the quote and callback flows. Form details stay in this page until you close or reload it. The preview sends no emails or text messages.'],
-    terms: ['Legal information', 'This private preview demonstrates how an enquiry works. Pricing and service terms require RAIKAN’s confirmation. To discuss a real transaction, call <a href="tel:+61870769899">08 7076 9899</a>.'],
+    privacy: ['Enquiry privacy', 'The details you submit are stored to prepare your quote and respond to your enquiry. Quote emails and text messages are sent through our delivery providers when enabled. This form does not sign you up for marketing.'],
+    terms: ['Legal information', 'Submitting an enquiry does not create a formal engagement. Pricing and service terms require RAIKAN’s confirmation. To discuss a real transaction, call <a href="tel:+61870769899">08 7076 9899</a>.'],
   };
 
   function validate(form) {
@@ -594,45 +501,7 @@ export function mountReference() {
     $('#nav-links').classList.toggle('open', open);
   }
   listen(document, 'click', (event) => {
-    // Two-Tab Navigation Click (1. Your Details | 2. Buying or Selling)
-    const heroTab = event.target.closest('[data-hero-tab]');
-    if (heroTab) {
-      event.preventDefault();
-      const tabNum = Number(heroTab.dataset.heroTab);
-      if (tabNum === 1) {
-        heroForm.step = 1;
-        renderHeroQuoteCard();
-      } else if (tabNum === 2) {
-        if (heroForm.step === 1) {
-          const s1Form = document.querySelector('form[data-hero-form="step1"]');
-          if (s1Form) {
-            const values = Object.fromEntries(new FormData(s1Form));
-            if (values.propertyValue !== undefined) {
-              heroForm.contact.propertyValue = (values.propertyValue || '').trim();
-            }
-          }
-          if (!validateStep1()) {
-            renderHeroQuoteCard();
-            return;
-          }
-        }
-        heroForm.step = 2;
-        renderHeroQuoteCard();
-        const firstTarget = document.querySelector('#hero-quote-card input[name="name"]');
-        if (firstTarget) firstTarget.focus();
-      }
-      return;
-    }
-
-    // Back to details button
-    if (event.target.closest('[data-hero-back]')) {
-      event.preventDefault();
-      heroForm.step = 1;
-      renderHeroQuoteCard();
-      return;
-    }
-
-    // Service Pill Click (Buying | Selling | Other)
+    // Service Pill Click (Buying in SA | Selling in SA | Family transfer)
     const heroPill = event.target.closest('[data-hero-pill]');
     if (heroPill) {
       event.preventDefault();
@@ -640,8 +509,7 @@ export function mountReference() {
       if (heroForm.service !== svc) {
         heroForm.service = svc;
         heroForm.choice = heroServices[svc]?.choices[0]?.[0] || '';
-        heroForm.contact.propertyValue = '';
-        heroForm.errors = {};
+        delete heroForm.errors.choice;
         renderHeroQuoteCard();
       }
       return;
@@ -658,7 +526,7 @@ export function mountReference() {
       return;
     }
 
-    // Result: Reset button -> Returns to step 1
+    // Result: Reset button -> Returns to form
     if (event.target.closest('[data-hero-reset]')) {
       event.preventDefault();
       heroForm.step = 1;
@@ -679,8 +547,6 @@ export function mountReference() {
       event.preventDefault();
       const heroCard = document.getElementById('hero-quote-card');
       if (heroCard) {
-        // Native dialogs leave the page inert until closed. Restore focus to the
-        // current quote step instead of returning to the popup's old trigger.
         if (dialog.open) {
           dialog.close();
         }
@@ -688,7 +554,7 @@ export function mountReference() {
         heroCard.classList.remove('hero-card-pulse');
         void heroCard.offsetWidth;
         heroCard.classList.add('hero-card-pulse');
-        const nextField = heroCard.querySelector('input[name="propertyValue"], input[name="name"], input[type="radio"]:checked, input, button[type="submit"]');
+        const nextField = heroCard.querySelector('input[name="name"], input[name="propertyValue"], input[type="radio"]:checked, input, button[type="submit"]');
         if (nextField) {
           setTimeout(() => nextField.focus({ preventScroll: true }), 350);
         }
@@ -703,10 +569,6 @@ export function mountReference() {
       if (['buy', 'sell', 'transfer'].includes(data.service)) {
         heroForm.service = data.service;
         heroForm.choice = heroServices[data.service]?.choices[0]?.[0] || '';
-        heroForm.contact.propertyValue = '';
-        if (heroForm.contact.name && heroForm.contact.phone && heroForm.contact.email) {
-          heroForm.step = 2;
-        }
         renderHeroQuoteCard();
         const heroCard = document.getElementById('hero-quote-card');
         if (heroCard) {
@@ -726,9 +588,17 @@ export function mountReference() {
     if (data.info) return openDialog(info[data.info][0], '<p class="lead-in">' + info[data.info][1] + '</p>');
     if ('close' in data) return dialog.close();
     if ('proceed' in data) {
-      workflow.recordIntent();
-      track('onboarding_started', { service: state.service });
-      return showQuote('onboarding');
+      target.disabled = true;
+      void workflow.recordIntent().then(() => {
+        track('onboarding_started', { service: state.service });
+        showQuote('onboarding');
+      }).catch(error => {
+        const notice = document.createElement('p');
+        notice.setAttribute('role', 'alert');
+        notice.textContent = error.message;
+        dialogContent.append(notice);
+      }).finally(() => { target.disabled = false; });
+      return;
     }
     if ('reset' in data) {
       workflow.reset();
@@ -741,11 +611,14 @@ export function mountReference() {
     const form = event.target.form;
     if (!form) return;
     const { name, value, checked } = event.target;
-    if (form.dataset.heroForm === 'step1' || form.dataset.heroForm === 'step2' || form.dataset.heroForm === 'page1' || form.dataset.heroForm === 'page2') {
+    if (form.dataset.heroForm) {
+      userCountryLocked = true;
       if (name === 'callback') {
         heroForm.contact.callback = checked;
       } else if (name === 'propertyValue') {
         heroForm.contact.propertyValue = value;
+      } else if (name === 'notes') {
+        heroForm.contact.notes = value;
       } else if (name in heroForm.contact) {
         heroForm.contact[name] = value;
         if (heroForm.errors[name]) {
@@ -779,46 +652,36 @@ export function mountReference() {
     }
   });
 
-  listen(document, 'submit', (event) => {
+  listen(document, 'submit', async (event) => {
     const form = event.target;
-    if (form.dataset.heroForm === 'step1' || form.dataset.heroForm === 'page1') {
+    if (!form.dataset.heroForm && !form.dataset.form) return;
+    event.preventDefault();
+    if (form.dataset.submitting) return;
+    form.dataset.submitting = 'true';
+    form.setAttribute('aria-busy', 'true');
+    const submitButton = form.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+    try {
+    if (form.dataset.heroForm) {
       event.preventDefault();
-      const values = Object.fromEntries(new FormData(form));
-      if (values.propertyValue !== undefined) {
-        heroForm.contact.propertyValue = (values.propertyValue || '').trim();
-      }
-      if (!validateStep1()) {
-        renderHeroQuoteCard();
-        return;
-      }
-      heroForm.step = 2;
-      heroForm.errors = {};
-      renderHeroQuoteCard();
-      const firstTarget = document.querySelector('#hero-quote-card input[name="name"]');
-      if (firstTarget) firstTarget.focus();
-      return;
-    }
-
-    if (form.dataset.heroForm === 'step2' || form.dataset.heroForm === 'page2') {
-      event.preventDefault();
-      if (!validateStep2(form)) {
+      if (!validateHeroForm(form)) {
         renderHeroQuoteCard();
         const first = Object.keys(heroForm.errors)[0];
-        const el = document.querySelector('#hero-quote-card input[name="' + first + '"]');
+        const el = document.querySelector('#hero-quote-card [name="' + first + '"]');
         if (el) el.focus();
         return;
       }
       const values = Object.fromEntries(new FormData(form));
       heroForm.contact.notes = (values.notes || '').trim();
-      heroForm.contact.callback = Boolean(values.callback);
+      heroForm.contact.propertyValue = (values.propertyValue || '').trim();
 
-      heroForm.step = 4;
-      heroForm.lead = workflow.createQuote({
+      heroForm.lead = await workflow.createQuote({
         service: heroForm.service,
         choice: heroForm.choice,
-        contact: { ...heroForm.contact },
-        callback: heroForm.contact.callback,
-      });
+        contact: { ...heroForm.contact, countryCode: userCountry.code },
+        callback: Boolean(heroForm.contact.callback),
+      }, form);
+      heroForm.step = 4;
       track('quote_displayed', { service: heroForm.service, choice: heroForm.choice, source: 'hero_card' });
       renderHeroQuoteCard();
       return;
@@ -835,24 +698,32 @@ export function mountReference() {
         state.callback = Boolean(callback);
         state.onboarding = {};
         track('quote_form_step_completed', { service: state.service, step: 1 });
-        state.lead = workflow.createQuote({ service: state.service, choice: state.choice, contact: { ...state.contact }, callback: state.callback });
+        state.lead = await workflow.createQuote({ service: state.service, choice: state.choice, contact: { ...state.contact }, callback: state.callback }, form);
         track('quote_displayed', { service: state.service });
         showQuote('result');
         break;
       }
       case 'callback': {
-        workflow.requestCallback(values);
+        await workflow.requestCallback(values, form);
         state.contact = { ...state.contact, name: values.name, phone: values.phone };
         state.callback = true;
         const callbackAction = state.lead ? '<button type="button" class="button full" data-stage="result">Back to my quote</button>' : '<button type="button" class="button full" data-close>Done</button>';
-        openDialog('Callback preview complete.', '<p class="lead-in">This was a preview request. To speak with RAIKAN, call <a href="tel:+61870769899">08 7076 9899</a>.</p><div class="card-actions">' + callbackAction + '</div>');
+        openDialog('Your callback request is saved.', '<p class="lead-in">Our team will review your request. If you need help sooner, call <a href="tel:+61870769899">08 7076 9899</a>.</p><div class="card-actions">' + callbackAction + '</div>');
         break;
       }
       case 'onboarding':
-        workflow.saveOnboarding(values, true);
+        await workflow.saveOnboarding(values, true);
         track('onboarding_completed', { service: state.service });
         showQuote('complete');
         break;
+    }
+    } catch (error) {
+      const currentForm = form.isConnected ? form : document.querySelector('#hero-quote-card form');
+      if (currentForm) showFormError(currentForm, error);
+    } finally {
+      delete form.dataset.submitting;
+      form.removeAttribute('aria-busy');
+      if (submitButton) submitButton.disabled = false;
     }
   });
 

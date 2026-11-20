@@ -16,6 +16,12 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+
+# Documentation & Markdown files (kept locally)
+*.md
+**/*.md
+docs/backend-verification/
 
 # Logs
 npm-debug.log*

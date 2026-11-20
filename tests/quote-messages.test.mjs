@@ -26,7 +26,8 @@ test('buyer messages include both existing PDF attachments, safe HTML, costs and
   assert(result.email.text.includes('Stamp duty & lodgement fees: As charged'));
   assert.equal(result.email.attachments.length,2);
   for (const attachment of result.email.attachments) assert(existsSync(attachment.path));
-  assert.equal(result.sms.dependsOn,'client_email_accepted');
+  assert.equal(result.sms.dependsOn,undefined);
+  assert(!result.sms.text.includes('in your email'));
 });
 test('vendor messages include seller costs and do not attach the purchaser documents', () => {
   const result = createClientMessages({...lead,service:'sell',callback:false});
