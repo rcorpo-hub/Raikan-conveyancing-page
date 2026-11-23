@@ -1,3 +1,4 @@
+import { readVapiConfig } from './vapi-config.mjs';
 const bool = (v) => v === 'true';
 const number = (v, fallback, min = 1, max = 1e6) => {
   const n = v === undefined || v === '' ? fallback : Number(v);
@@ -42,5 +43,7 @@ export function readConfig(env = process.env) {
   if (config.channel === 'MMS' && config.smsEnabled && !config.mediaUrl) throw new Error('MMS requires SINCH_MEDIA_URL');
   if (production && (origin.protocol !== 'https:' || !config.turnstileSecret || !config.turnstileSiteKey || config.salt.length < 32 || config.tokenSecret.length < 32 || config.tokenSecret === 'local-development-token-secret')) throw new Error('Production requires HTTPS, Turnstile keys and random RATE_LIMIT_SALT / LEAD_TOKEN_SECRET values of at least 32 characters');
   if (Boolean(config.turnstileSiteKey) !== Boolean(config.turnstileSecret)) throw new Error('Configure both Turnstile keys together');
+  config.vapi = readVapiConfig(env);
+  if (config.vapi.enabled && !config.databaseReady) throw new Error('Vapi requires Supabase configuration');
   return config;
 }

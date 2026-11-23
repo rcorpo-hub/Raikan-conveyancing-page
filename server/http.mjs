@@ -2,15 +2,16 @@ import { createServer } from 'node:http';
 import { readFile,stat } from 'node:fs/promises';
 import { resolve,extname,sep } from 'node:path';
 import { HttpError } from './validation.mjs';
+import { verifyVapiAuth } from './vapi-webhook.mjs';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.webp':'image/webp','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.pdf':'application/pdf'};
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
-async function readBody(req) {
+async function readBody(req,limit=16384) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new HttpError(415,'Use application/json.');
   let body='';
-  for await (const chunk of req) {body+=chunk;if(Buffer.byteLength(body)>16384) throw new HttpError(413,'Your enquiry is too long.');}
+  for await (const chunk of req) {body+=chunk;if(Buffer.byteLength(body)>limit) throw new HttpError(413,'Your request is too long.');}
   try{return JSON.parse(body);}catch{throw new HttpError(400,'Invalid request.');}
 }
-export function createHttpServer({config,service,log=console.error,staticRoot=resolve('dist')}) {
+export function createHttpServer({config,service,vapiWebhook,log=console.error,staticRoot=resolve('dist')}) {
   const buckets=new Map();
   const allowed=new Set([config.origin,...(!config.production?['http://localhost:5173','http://127.0.0.1:5173','http://localhost:4174','http://127.0.0.1:4174']:[])]);
   const server=createServer(async(req,res)=>{
@@ -22,13 +23,19 @@ export function createHttpServer({config,service,log=console.error,staticRoot=re
       const url=new URL(req.url,'http://localhost');
       const path=url.pathname;
       if(path.startsWith('/api/')) {
+        // Server-to-server traffic has no browser Origin. Authenticate before reading its body.
+        if (path==='/api/vapi/webhook' && req.method==='POST') {
+          if (!verifyVapiAuth(req.headers.authorization,config.vapi?.webhookSecret)) throw new HttpError(401,'Unauthorised.');
+          if (!vapiWebhook) throw new HttpError(503,'Call service unavailable.');
+          return json(res,200,await vapiWebhook(await readBody(req,262144)));
+        }
         const ip=config.trustProxy?String(req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',').at(-1).trim():req.socket.remoteAddress;
         const now=Date.now();
         if(buckets.size>10000)for(const [key,value] of buckets)if(value.until<now)buckets.delete(key);
         let bucket=buckets.get(ip);
         if(!bucket||bucket.until<now){if(buckets.size>=10000&&!buckets.has(ip))throw new HttpError(429,'Please try again shortly.');bucket={count:0,until:now+60000};buckets.set(ip,bucket);}
         if(++bucket.count>60)throw new HttpError(429,'Too many requests. Please try again shortly.');
-        if(req.method==='GET'&&path==='/api/config')return json(res,200,{storageAvailable:config.databaseReady,smsEnabled:config.smsReady,emailEnabled:config.emailReady,turnstileSiteKey:config.turnstileSiteKey});
+        if(req.method==='GET'&&path==='/api/config')return json(res,200,{storageAvailable:config.databaseReady,smsEnabled:config.smsReady,emailEnabled:config.emailReady,turnstileSiteKey:config.turnstileSiteKey,aiCallsEnabled:config.vapi?.enabled || false});
         if(req.method==='GET'&&path==='/api/health')return json(res,config.databaseReady?200:503,{status:config.databaseReady?'configured':'credentials_required'});
         const optout=path.match(/^\/api\/unsubscribe\/([\da-f]{64})$/);
         if(optout&&req.method==='GET'){

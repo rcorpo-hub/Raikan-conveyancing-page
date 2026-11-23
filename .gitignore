@@ -17,6 +17,7 @@ build/
 .env.test.local
 .env.production.local
 .env.*
+!.env.example
 
 # Documentation & Markdown files (kept locally)
 *.md
