@@ -9,13 +9,13 @@ const list = value => (value || '').split(',').map(v => v.trim()).filter(Boolean
 export function readVapiConfig(env) {
   const config = {
     enabled: env.VAPI_ENABLED === 'true', testMode: env.VAPI_TEST_MODE !== 'false',
-    key: env.VAPI_API_KEY || '', assistantId: env.VAPI_ASSISTANT_ID || '', phoneNumberId: env.VAPI_PHONE_NUMBER_ID || '',
+    key: env.VAPI_API_KEY || '', assistantId: env.VAPI_ASSISTANT_ID || '350c38af-7b86-4ac4-b5c5-a8f3362d6d48', phoneNumberId: env.VAPI_PHONE_NUMBER_ID || '', structuredOutputId:env.VAPI_STRUCTURED_OUTPUT_ID || '705ce0dd-4adb-46d4-9179-a9563fc79ea3',
     webhookSecret: env.VAPI_WEBHOOK_SECRET || '', credentialId: env.VAPI_SERVER_CREDENTIAL_ID || '',
     serverUrl: (env.VAPI_SERVER_URL || '').replace(/\/$/, ''),
-    testNumbers: list(env.VAPI_TEST_NUMBERS), callingCodes: list(env.VAPI_ALLOWED_CALLING_CODES || '61'),
+    testNumbers: list(env.VAPI_TEST_NUMBERS), callingCodes: list(env.VAPI_ALLOWED_CALLING_CODES || '91'),
     delaySeconds: integer(env.VAPI_CALL_DELAY_SECONDS, 30, 30, 3600),
     maxSeconds: integer(env.VAPI_MAX_CALL_SECONDS, 300, 60, 600),
-    timezone: env.VAPI_TIMEZONE || 'Australia/Adelaide',
+    timezone: env.VAPI_TIMEZONE || 'Asia/Kolkata',
     startHour: integer(env.VAPI_CALL_START_HOUR, 9, 0, 23), endHour: integer(env.VAPI_CALL_END_HOUR, 17, 1, 24),
     blockedDates: list(env.VAPI_BLOCKED_DATES),
     transferNumber: env.VAPI_TRANSFER_NUMBER || '', businessEmail: env.VAPI_BUSINESS_EMAIL || '',
@@ -32,6 +32,7 @@ export function readVapiConfig(env) {
     if (!config.serverUrl || new URL(config.serverUrl).protocol !== 'https:') throw new Error('Vapi requires a public HTTPS VAPI_SERVER_URL');
     if (config.testMode && !config.testNumbers.length) throw new Error('Vapi test mode requires VAPI_TEST_NUMBERS');
     if (!config.callingCodes.length || config.callingCodes.some(v => !/^\d{1,3}$/.test(v))) throw new Error('Invalid Vapi calling codes');
+    if (config.testMode && config.testNumbers.some(number => !config.callingCodes.includes(parsePhoneNumberFromString(number)?.countryCallingCode))) throw new Error('Every Vapi test number must use an allowed calling code');
   }
   return config;
 }

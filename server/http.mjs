@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { readFile,stat } from 'node:fs/promises';
 import { resolve,extname,sep } from 'node:path';
 import { HttpError } from './validation.mjs';
-import { verifyVapiAuth } from './vapi-webhook.mjs';
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.webp':'image/webp','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.pdf':'application/pdf'};
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 async function readBody(req,limit=16384) {
@@ -11,7 +10,7 @@ async function readBody(req,limit=16384) {
   for await (const chunk of req) {body+=chunk;if(Buffer.byteLength(body)>limit) throw new HttpError(413,'Your request is too long.');}
   try{return JSON.parse(body);}catch{throw new HttpError(400,'Invalid request.');}
 }
-export function createHttpServer({config,service,vapiWebhook,log=console.error,staticRoot=resolve('dist')}) {
+export function createHttpServer({config,service,runDelivery,log=console.error,staticRoot=resolve('dist')}) {
   const buckets=new Map();
   const allowed=new Set([config.origin,...(!config.production?['http://localhost:5173','http://127.0.0.1:5173','http://localhost:4174','http://127.0.0.1:4174']:[])]);
   const server=createServer(async(req,res)=>{
@@ -22,20 +21,21 @@ export function createHttpServer({config,service,vapiWebhook,log=console.error,s
     try {
       const url=new URL(req.url,'http://localhost');
       const path=url.pathname;
+      if(path==='/api/cron'&&req.method==='GET'){
+        const secret=process.env.CRON_SECRET;
+        if(!secret||req.headers.authorization!=='Bearer '+secret)throw new HttpError(401,'Unauthorised.');
+        await Promise.allSettled([runDelivery?.()]);
+        return json(res,200,{ok:true});
+      }
       if(path.startsWith('/api/')) {
         // Server-to-server traffic has no browser Origin. Authenticate before reading its body.
-        if (path==='/api/vapi/webhook' && req.method==='POST') {
-          if (!verifyVapiAuth(req.headers.authorization,config.vapi?.webhookSecret)) throw new HttpError(401,'Unauthorised.');
-          if (!vapiWebhook) throw new HttpError(503,'Call service unavailable.');
-          return json(res,200,await vapiWebhook(await readBody(req,262144)));
-        }
         const ip=config.trustProxy?String(req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',').at(-1).trim():req.socket.remoteAddress;
         const now=Date.now();
         if(buckets.size>10000)for(const [key,value] of buckets)if(value.until<now)buckets.delete(key);
         let bucket=buckets.get(ip);
         if(!bucket||bucket.until<now){if(buckets.size>=10000&&!buckets.has(ip))throw new HttpError(429,'Please try again shortly.');bucket={count:0,until:now+60000};buckets.set(ip,bucket);}
         if(++bucket.count>60)throw new HttpError(429,'Too many requests. Please try again shortly.');
-        if(req.method==='GET'&&path==='/api/config')return json(res,200,{storageAvailable:config.databaseReady,smsEnabled:config.smsReady,emailEnabled:config.emailReady,turnstileSiteKey:config.turnstileSiteKey,aiCallsEnabled:config.vapi?.enabled || false});
+        if(req.method==='GET'&&path==='/api/config')return json(res,200,{storageAvailable:config.databaseReady,smsEnabled:config.smsReady,emailEnabled:config.emailReady,turnstileSiteKey:config.turnstileSiteKey});
         if(req.method==='GET'&&path==='/api/health')return json(res,config.databaseReady?200:503,{status:config.databaseReady?'configured':'credentials_required'});
         const optout=path.match(/^\/api\/unsubscribe\/([\da-f]{64})$/);
         if(optout&&req.method==='GET'){
@@ -53,7 +53,13 @@ export function createHttpServer({config,service,vapiWebhook,log=console.error,s
           return res.end('<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Texts stopped</title><main style="max-width:420px;margin:70px auto;padding:24px;font:18px/1.6 system-ui;color:#16374b"><h1>Your preference is saved.</h1><p>You will not receive further automated texts from Raikan. A message already being sent may still arrive.</p><p>For assistance, call 08 7076 9899.</p></main></html>');
         }
         const body=await readBody(req);
-        if(req.method==='POST'&&['/api/quotes','/api/callbacks'].includes(path))return json(res,202,await service.create(body,req.headers['idempotency-key'],ip,path==='/api/quotes'?'quote':'callback'));
+        if(req.method==='POST'&&['/api/quotes','/api/callbacks'].includes(path)){
+          const result=await service.create(body,req.headers['idempotency-key'],ip,path==='/api/quotes'?'quote':'callback');
+          // In serverless deployments there is no always-on worker. Kick off the durable jobs
+          // during the request so queued email and SMS work can begin promptly.
+          await Promise.allSettled([runDelivery?.()]);
+          return json(res,202,result);
+        }
         const match=path.match(/^\/api\/leads\/([\da-f-]{36})\/(status|intent|onboarding|callback)$/);
         if(match){
           const token=String(req.headers.authorization || '').replace(/^Bearer /,'');
@@ -73,7 +79,9 @@ export function createHttpServer({config,service,vapiWebhook,log=console.error,s
       res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':path.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com; font-src 'self'; connect-src 'self' https://challenges.cloudflare.com https://ipapi.co https://api.country.is; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"});
       res.end(req.method==='HEAD'?undefined:data);
     }catch(error){
-      if(!(error instanceof HttpError))log('Request failed; check server configuration and database migration.');
+      const code=/^[A-Z0-9_]{1,40}$/.test(error?.code || '')?error.code:null;
+      if(code)log(`Request failed with database/provider code ${code}.`);
+      else if(!(error instanceof HttpError))log('Request failed; check server configuration and database migration.');
       if(!res.headersSent)json(res,error.status || 500,{error:error instanceof HttpError?error.message:'The service is temporarily unavailable. Please call 08 7076 9899.'});
       else res.end();
     }

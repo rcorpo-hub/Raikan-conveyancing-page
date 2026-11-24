@@ -1,8 +1,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { validateQuote, validateOnboarding, digest, HttpError } from './validation.mjs';
-import { createClientMessages } from '../src/reference/messages.js';
+import { createClientMessages, buildCallbackTeamEmail } from '../src/reference/messages.js';
 import { feeVersion,getBreakdown,getOptionalCharges } from '../src/reference/config.js';
-import { callAllowed, nextCallTime } from './vapi-config.mjs';
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 export function createEnquiryService({store,config,fetchImpl=fetch}) {
   const signed = value => createHmac('sha256',config.tokenSecret).update(value).digest('hex');
@@ -33,14 +32,9 @@ export function createEnquiryService({store,config,fetchImpl=fetch}) {
       const accessToken=signed('access:'+key), unsubscribeToken=signed('unsubscribe:'+key);
       const reference='RAI-'+new Date().toISOString().slice(0,10).replaceAll('-','')+'-'+randomUUID().slice(0,8).toUpperCase();
       const lead={...value,reference,idempotency_key:key,request_hash:digest(JSON.stringify(value)),access_token_hash:digest(accessToken),unsubscribe_hash:digest(unsubscribeToken),phone_hash:signed('phone:'+value.contact.phone),consent:{purpose:'quote_email_sms_and_enquiry_followup',version:'2026-11-20',requested_at:new Date().toISOString()},fee_snapshot:{version:feeVersion,rows:kind==='quote'?[...getBreakdown(value.service,value.choice),...getOptionalCharges(value.service)]:[]}};
-      if (value.aiCallConsent !== undefined) lead.consent.ai_call={granted:value.aiCallConsent,version:'2026-11-ai-call-v1',requested_at:new Date().toISOString()};
-      // Call consent is separate from SMS/email consent; never backfill old enquiries.
-      if (config.vapi?.enabled && value.aiCallConsent === true && callAllowed(value.contact.phone,config.vapi)) {
-        lead.ai_call={available_at:nextCallTime(new Date(Date.now()+config.vapi.delaySeconds*1000),config.vapi).toISOString()};
-      }
       let messages;
       if (kind==='quote') messages=createClientMessages(lead);
-      else messages={sms:{to:value.contact.phone,text:`Raikan: Your callback request ${reference} has been received. Our team will contact you during office hours. For urgent questions, call 08 7076 9899.`},teamEmail:{subject:`Callback requested | ${reference}`,text:`Name: ${value.contact.name}\nPhone: ${value.contact.phone}\nPreferred time: ${value.time || 'Any time'}`} };
+      else messages={sms:{to:value.contact.phone,text:`Raikan: Your callback request has been received. Our team will contact you during office hours. For urgent questions, call 08 7076 9899.`},teamEmail:buildCallbackTeamEmail({name:value.contact.name,phone:value.contact.phone,time:value.time}) };
       let sms=messages.sms.text;
       sms+=`\nStop texts: ${config.origin}/api/unsubscribe/${unsubscribeToken}`;
       const jobs=[];
@@ -63,7 +57,10 @@ export function createEnquiryService({store,config,fetchImpl=fetch}) {
       const lead=await authorised(id,token);
       const value=validateQuote({...input,consent:true,contact:input.contact},'callback');
       await store.update(id,lead.access_token_hash,{callback:true,callback_time:value.time});
-      if (config.teamEmail) await store.queueCallback(lead,{to:config.teamEmail,subject:`Callback requested | ${lead.reference}`,text:`Reference: ${lead.reference}\nName: ${value.contact.name}\nPhone: ${value.contact.phone}\nPreferred time: ${value.time || 'Any time'}`},config.emailReady?'pending':'disabled');
+      if (config.teamEmail) {
+        const teamCallback = buildCallbackTeamEmail({ name: value.contact.name, phone: value.contact.phone, time: value.time });
+        await store.queueCallback(lead, { ...teamCallback, to: config.teamEmail }, config.emailReady ? 'pending' : 'disabled');
+      }
       return {saved:true};
     },
     async unsubscribe(token) { requireStore(); if (!/^[\da-f]{64}$/.test(token)) throw new HttpError(404,'Link not found.'); if (!await store.suppress(digest(token))) throw new HttpError(404,'Link not found.'); return {saved:true}; },

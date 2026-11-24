@@ -1,0 +1,8 @@
+project_id = "fdiuszjfgdlyktxgtzhu"
+
+# The handlers authenticate separate custom Bearer tokens before doing any work.
+[functions.verify-customer]
+verify_jwt = false
+
+[functions.log-call]
+verify_jwt = false

@@ -9,10 +9,13 @@ export function createCallWorker({store,vapi,config,now=()=>new Date(),log=conso
     if (!lead.consent.ai_call?.granted || !callAllowed(lead.contact.phone,config.vapi) || await store.suppressed(lead.phone_hash)) {
       await store.finish(job.id,{status:'suppressed'}); return;
     }
-    const due=nextCallTime(now(),config.vapi);
-    if (due>now()) { await store.finish(job.id,{status:'pending',available_at:due.toISOString()}); return; }
+    // Submit the Vapi call immediately with a provider-side scheduled start.
+    // This avoids relying on an always-running Node process on Vercel.
+    let scheduledFor;
+    try { scheduledFor=nextCallTime(new Date(job.scheduled_for || now().getTime()+config.vapi.delaySeconds*1000),config.vapi).toISOString(); }
+    catch { await store.finish(job.id,{status:'failed',last_error:'no_call_window'}); return; }
     let id;
-    try { id=await vapi.create(job,lead); }
+    try { id=await vapi.create({...job,scheduled_for:scheduledFor},lead); }
     catch(error) {
       const retry=error.outcome==='retry' && job.attempts<3;
       await store.finish(job.id,{status:retry?'pending':error.outcome==='unknown'?'unknown':'failed',last_error:error.code || 'vapi_error',...(retry?{available_at:new Date(now().getTime()+60000*job.attempts).toISOString()}: {})});

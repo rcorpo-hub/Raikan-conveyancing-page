@@ -4,7 +4,9 @@ const check = (result) => {
   if (result.error) {
     if (result.error.message?.includes('QUOTE_RATE_LIMIT')) throw new HttpError(429,'Too many enquiries. Please call us or try again later.');
     if (result.error.message?.includes('QUOTE_IDEMPOTENCY_CONFLICT')) throw new HttpError(409,'This request has changed. Please start a new enquiry.');
-    throw new HttpError(503,'We could not save your enquiry. Please try again or call 08 7076 9899.');
+    const error = new HttpError(503,'We could not save your enquiry. Please try again or call 08 7076 9899.');
+    error.code = /^[A-Z0-9_]{1,40}$/.test(result.error.code || '') ? result.error.code : 'SUPABASE_REQUEST_FAILED';
+    throw error;
   }
   return result.data;
 };

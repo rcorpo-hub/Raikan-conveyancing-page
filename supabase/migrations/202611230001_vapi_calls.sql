@@ -6,6 +6,7 @@ create table public.quote_calls (
  status text not null default 'pending' check(status in ('pending','processing','accepted','ringing','in-progress','ended','failed','unknown','suppressed','disabled','expired')),
  provider_id text unique,
  available_at timestamptz not null,
+ scheduled_for timestamptz not null,
  expires_at timestamptz not null,
  attempts integer not null default 0,
  locked_at timestamptz,
@@ -52,8 +53,9 @@ begin
    if not exists(select 1 from public.quote_call_suppressions where phone_hash=saved.phone_hash)
    and not exists(select 1 from public.quote_calls c join public.quote_leads l on l.id=c.lead_id
       where l.phone_hash=saved.phone_hash and (c.created_at>now()-interval '24 hours' or c.status in ('pending','processing','accepted','ringing','in-progress'))) then
-     insert into public.quote_calls(lead_id,available_at,expires_at)
+     insert into public.quote_calls(lead_id,available_at,scheduled_for,expires_at)
      values(saved.id,greatest((p_lead#>>'{ai_call,available_at}')::timestamptz,now()+interval '30 seconds'),
+       greatest((p_lead#>>'{ai_call,available_at}')::timestamptz,now()+interval '30 seconds'),
        greatest((p_lead#>>'{ai_call,available_at}')::timestamptz,now()+interval '30 seconds')+interval '24 hours');
    end if;
  end if;

@@ -19,7 +19,6 @@ export function validateQuote(input, kind = 'quote') {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new HttpError(400, 'Invalid enquiry.');
   if (input.website) throw new HttpError(400, 'Please check your enquiry.');
   if (input.consent !== true) throw new HttpError(400, 'Please agree to receive your quote and enquiry follow-up.');
-  if (input.aiCallConsent !== undefined && typeof input.aiCallConsent !== 'boolean') throw new HttpError(400, 'Please check your AI call preference.');
   const contact = input.contact || {};
   const email = kind === 'quote' ? text(contact.email, 254, 'your email address').toLowerCase() : '';
   if (email && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)) throw new HttpError(400, 'Please enter a valid email address.');
@@ -33,7 +32,7 @@ export function validateQuote(input, kind = 'quote') {
   }
   const time = input.time || '';
   if (kind === 'callback' && !['', 'morning', 'afternoon'].includes(time)) throw new HttpError(400, 'Please choose a callback time.');
-  return { kind, service, choice, contact: { name: text(contact.name,110,'your name'), email, phone: phone(contact.phone), notes: text(contact.notes,2000,'your questions',false), propertyValue: text(contact.propertyValue,60,'the property value',false) }, callback: kind === 'callback' || input.callback === true, attribution, time, ...(input.aiCallConsent !== undefined ? {aiCallConsent:input.aiCallConsent} : {}) };
+  return { kind, service, choice, contact: { name: text(contact.name,110,'your name'), email, phone: phone(contact.phone), notes: text(contact.notes,2000,'your questions',false), propertyValue: text(contact.propertyValue,60,'the property value',false) }, callback: kind === 'callback' || input.callback === true, attribution, time };
 }
 export function validateOnboarding(input) {
   const result = { suburb: text(input.suburb,110,'the property suburb',false), date: text(input.date,10,'the settlement date',false), completed: input.completed === true };

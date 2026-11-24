@@ -122,6 +122,52 @@ export function mountReference() {
     errors: {},
   };
 
+  let submissionResetTimer = null;
+  let submissionCountdownInterval = null;
+
+  function clearSubmissionTimers() {
+    if (submissionResetTimer) {
+      clearTimeout(submissionResetTimer);
+      submissionResetTimer = null;
+    }
+    if (submissionCountdownInterval) {
+      clearInterval(submissionCountdownInterval);
+      submissionCountdownInterval = null;
+    }
+  }
+
+  function resetHeroFormToStart() {
+    clearSubmissionTimers();
+    heroForm.step = 1;
+    heroForm.choice = heroServices[heroForm.service]?.choices[0]?.[0] || 'below';
+    heroForm.contact = { name: '', phone: '', email: '', propertyValue: '', notes: '', callback: false };
+    heroForm.errors = {};
+    renderHeroQuoteCard();
+  }
+
+  function startPostCloseSubmissionTimer() {
+    clearSubmissionTimers();
+    let remaining = 10;
+    const updateEl = () => {
+      const el = document.getElementById('hero-submission-timer');
+      if (el) el.textContent = String(Math.max(0, remaining));
+    };
+    updateEl();
+
+    submissionCountdownInterval = setInterval(() => {
+      remaining -= 1;
+      updateEl();
+      if (remaining <= 0) {
+        clearInterval(submissionCountdownInterval);
+        submissionCountdownInterval = null;
+      }
+    }, 1000);
+
+    submissionResetTimer = setTimeout(() => {
+      resetHeroFormToStart();
+    }, 10000);
+  }
+
   const heroServices = {
     buy: {
       title: 'Buying in SA',
@@ -206,9 +252,11 @@ export function mountReference() {
           ${currentService.title} · ${esc(valText)}
         </div>
         <p class="hero-form-disclaimer" style="text-align:left; margin-top:12px;">
-          Reference: <strong>${esc(heroForm.lead?.reference || '')}</strong><br>
           ${esc(deliveryCopy(heroForm.lead))}
         </p>
+        <div class="hero-submission-timer-note">
+          <span>Form will reload in <strong id="hero-submission-timer">10</strong>s</span>
+        </div>
         <div class="hero-result-actions">
           <a href="tel:+61870769899" class="hero-form-submit-btn">
             ${icon('phone')} Call Adelaide Office: 08 7076 9899
@@ -316,6 +364,98 @@ export function mountReference() {
     enhanceForms(container);
   }
 
+  function submittedCostSummary() {
+    const buying = heroForm.service === 'buy';
+    const selling = heroForm.service === 'sell';
+    const transfer = heroForm.service === 'transfer';
+    const isFamily = transfer && heroForm.choice === 'family';
+    const isSpouse = transfer && heroForm.choice === 'spouse';
+    const isFormer = transfer && (heroForm.choice === 'former' || heroForm.choice === 'former_spouse');
+
+    const title = buying
+      ? 'Buying a property'
+      : selling
+        ? 'Selling a property'
+        : isFamily
+          ? 'Transfer between family members other than spouse'
+          : isFormer
+            ? 'Transfer with former spouse'
+            : isSpouse
+              ? 'Transfer with current spouse'
+              : 'Family transfer';
+
+    const rows = buying ? [
+      ['File fee', '$88'], ['PEXA electronic settlement', '$146.30'],
+      ['Identity check', '$50 per person'], ['AML / CTF check', '$25 per person'],
+      ['Priority notice (optional)', '$38'], ['Copy of new title (optional)', '$38'],
+    ] : selling ? [
+      ['File fee', '$88'], ['PEXA electronic settlement', '$146.30'],
+      ['Identity check', '$50 per person'], ['AML / CTF check', '$25 per person'],
+      ['Special water meter reading', '$25'], ['Form 1 and searches', 'Separate cost, if needed'],
+    ] : isFamily ? [
+      ['Disbursements', 'As per actual from LTO'],
+      ['Premium Service (optional)', '~$500+ for fast processing'],
+    ] : (isSpouse || isFormer) ? [
+      ['File fee', '$88'], ['PEXA (Existing person)', '$146.30'],
+      ['PEXA (Incoming person)', '$146.30'], ['Lodgement fees (LTO)', '$204'],
+      ['Identity check', '$50 per person'], ['AML / CTF check', '$25 per person'],
+      ['Copy of new title (optional)', '$35'],
+    ] : [];
+
+    const fee = buying || selling
+      ? '<p class="submitted-fee">$660 + GST</p><p>Our professional conveyancing fee. Other transaction costs and government charges are additional.</p>'
+      : (isFamily || isSpouse || isFormer)
+        ? '<p class="submitted-fee">$990 (Incl. GST)</p><p>Our professional conveyancing fee. Other transaction costs and disbursements are additional.</p>'
+        : '<p class="submitted-fee">Personal quote</p><p>Family transfers differ. The team will confirm the work, professional fee and applicable charges for your circumstances.</p>';
+
+    const costs = rows.length
+      ? `<dl>${rows.map(([label, amount]) => `<div><dt>${label}</dt><dd>${amount}</dd></div>`).join('')}</dl><p class="submitted-cost-note">${isFamily ? 'Process starts once SCAP Approved plan is received from your planner/surveyor.' : 'Optional costs or settlement adjustments may also apply.'}</p>`
+      : '<p>Costs depend on the type of transfer and the people involved. The team will confirm any third-party costs and government charges for your situation.</p>';
+
+    const government = buying
+      ? '<p>Stamp duty and transfer fees vary with the property and your circumstances.</p><p>Mortgage registration may also apply if you are borrowing to buy.</p>'
+      : selling
+        ? '<p>A mortgage discharge fee may apply if you have a mortgage. Your quote guide lists $204.</p><p>Other government charges depend on your property and circumstances.</p>'
+        : isFamily
+          ? '<p>Disbursements depend on the number of titles. Ensure your lender provides consent for title issuance if there is a mortgage on title.</p>'
+          : '<p>Government charges depend on the type of transfer and your circumstances. Ask the team to confirm which charges apply.</p>';
+
+    return `<div class="submitted-cost-summary">
+      <header>
+        <p class="submitted-kicker"><span></span>Thanks for your enquiry</p>
+        <h2 id="dialog-title" tabindex="-1">A clear view of your costs</h2>
+        <span class="submitted-service">${title}</span>
+        <p>${esc(deliveryCopy(heroForm.lead))}</p>
+      </header>
+      <div class="submitted-cost-columns">
+        <section><h3>Conveyancing</h3>${fee}</section>
+        <section><h3>Other Charges</h3>${costs}</section>
+        <section>
+          <h3>Government charges</h3>
+          <dl class="gov-charges-options">
+            <div>
+              <dt>Stamp Duty</dt>
+              <dd>as per government charges</dd>
+            </div>
+            <div>
+              <dt>Transfer Fees</dt>
+              <dd>as per government charges</dd>
+            </div>
+          </dl>
+          <div class="gov-charges-note-block">
+            ${government}
+            <a href="https://www.sa.gov.au/topics/housing/planning-and-property/property-transfer-fee-calculator" target="_blank" rel="noopener noreferrer">SA government fee calculator</a>
+            <p class="submitted-cost-note">For South Australian property transfers.</p>
+          </div>
+        </section>
+      </div>
+      <footer>
+        <p>Amounts shown are from the supplied quote guide. This is not your total settlement cost. The team will confirm the charges for your property in an itemised quote.</p>
+        <button class="button" type="button" data-close>Close</button>
+      </footer>
+    </div>`;
+  }
+
   function field({ name, label, value, type = 'text', autocomplete = '', required = true }) {
     const length = name === 'email' ? 254 : name === 'phone' ? 24 : 110;
     return `<label class="field"><span>${label}</span><input type="${type}" name="${name}" value="${esc(value)}" autocomplete="${autocomplete || 'off'}" maxlength="${length}" ${required ? 'required' : ''} aria-describedby="${name}-error"><span class="error" id="${name}-error" hidden></span></label>`;
@@ -343,7 +483,7 @@ export function mountReference() {
       <div>${heading('Thanks for your enquiry', 'Your quote is for email and SMS.')}</div>
     </header>
     <p class="quote-result-service">${service.label} · ${choiceName}</p>
-    <p class="quote-reference">Reference ${esc(state.lead.reference)} · South Australia</p>
+    <p class="quote-reference">South Australia</p>
     <p class="lead-in">Review your detailed quote by email and SMS before choosing to proceed.</p>
     ${previewNote(esc(deliveryCopy(state.lead)))}
     <div class="card-actions">
@@ -409,6 +549,7 @@ export function mountReference() {
     if (!dialog.open) dialogTrigger = document.activeElement;
     dialog.classList.toggle('quote-dialog', Boolean(quoteStage));
     dialog.classList.toggle('quote-dialog-form', quoteStage === 'form');
+    dialog.classList.toggle('quote-dialog-cost-summary', quoteStage === 'cost-summary');
     const close = dialog.querySelector('[data-close]');
     close.setAttribute('aria-label', quoteStage ? 'Close quote' : 'Close dialog');
     dialogContent.innerHTML = body;
@@ -487,6 +628,9 @@ export function mountReference() {
   }
 
   listen(dialog, 'close', () => {
+    if (heroForm.step === 4) {
+      startPostCloseSubmissionTimer();
+    }
     if (dialogTrigger?.isConnected && dialogTrigger.getClientRects().length) {
       dialogTrigger.focus({ preventScroll: true });
     } else {
@@ -529,11 +673,8 @@ export function mountReference() {
     // Result: Reset button -> Returns to form
     if (event.target.closest('[data-hero-reset]')) {
       event.preventDefault();
-      heroForm.step = 1;
-      heroForm.choice = 'below';
-      heroForm.contact.propertyValue = '';
-      heroForm.errors = {};
-      renderHeroQuoteCard();
+      clearSubmissionTimers();
+      resetHeroFormToStart();
       return;
     }
 
@@ -684,6 +825,7 @@ export function mountReference() {
       heroForm.step = 4;
       track('quote_displayed', { service: heroForm.service, choice: heroForm.choice, source: 'hero_card' });
       renderHeroQuoteCard();
+      showDialog(submittedCostSummary(), 'cost-summary');
       return;
     }
     if (!form.dataset.form) return;
@@ -780,6 +922,7 @@ export function mountReference() {
   track('landing_page_viewed');
 
   return () => {
+    clearSubmissionTimers();
     controller.abort();
     if (dialog.open) dialog.close();
   };

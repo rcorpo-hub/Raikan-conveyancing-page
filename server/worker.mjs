@@ -1,5 +1,5 @@
 export function createWorker({store,sinch,mailer,config,log=console.error}) {
-  let running = false, timer, lastMaintenance=0;
+  let running = false, timer, lastMaintenance=0, lastQueueWarning=0;
   async function deliver(job) {
     if ((job.channel === 'client_sms' && !config.smsReady) || (job.channel !== 'client_sms' && !config.emailReady)) {
       await store.finish(job.id,{status:'disabled',last_error:'delivery_disabled'}); return;
@@ -35,7 +35,14 @@ export function createWorker({store,sinch,mailer,config,log=console.error}) {
         try { await store.delivery(item.id,await sinch.status(item.provider_id)); }
         catch { await store.delivery(item.id,'accepted'); }
       }
-    } catch { log('Delivery worker could not access its queue; it will try again.'); }
+      lastQueueWarning=0;
+    } catch(error) {
+      if(Date.now()-lastQueueWarning>=60000){
+        const code=/^[A-Z0-9_]{1,40}$/.test(error?.code || '')?error.code:'SUPABASE_QUEUE_UNAVAILABLE';
+        log(`Delivery worker could not access its queue (${code}); it will retry.`);
+        lastQueueWarning=Date.now();
+      }
+    }
     finally { running=false; }
   }
   return {

@@ -7,6 +7,7 @@ export function buildCall(job, lead, config) {
   return {
     assistantId:v.assistantId, phoneNumberId:v.phoneNumberId,
     customer:{number:lead.contact.phone},
+    schedulePlan:{earliestAt:job.scheduled_for || job.available_at},
     assistantOverrides:{
       firstMessage:'Hi, this is Raikan Conveyancing’s AI assistant. Am I speaking with {{customer_name}}?',
       maxDurationSeconds:v.maxSeconds,
@@ -52,8 +53,9 @@ export function providerStatus(status) {
 }
 
 export function callDetails(message) {
-  const summary=message.analysis?.summary;
-  const structured=message.analysis?.structuredData;
+  const call=message.call || message;
+  const summary=call.analysis?.summary;
+  const structured=call.artifact?.structuredOutputs || call.analysis?.structuredData;
   return {
     ...(typeof message.endedReason==='string' ? {ended_reason:message.endedReason.slice(0,200)} : {}),
     ...(typeof summary==='string' ? {summary:summary.slice(0,4000)} : {}),

@@ -23,7 +23,7 @@ export function createVapiWebhook({store,config}) {
       if (!config.teamEmail || !config.emailReady) return {recorded:false,error:'Team callback notifications are not configured. Do not promise a callback.'};
       const preference=text(args.preferred_time,300,'the callback preference');
       const lead=await store.lead(call.lead_id);
-      await store.callback(call.id,preference,{to:config.teamEmail,subject:'AI call callback request | '+lead.reference,text:`Reference: ${lead.reference}\nName: ${lead.contact.name}\nPhone: ${lead.contact.phone}\nRequested time: ${preference}\nThis is a request, not a confirmed appointment.`},config.emailReady);
+      await store.callback(call.id,preference,{to:config.teamEmail,subject:'AI call callback request',text:`Name: ${lead.contact.name}\nPhone: ${lead.contact.phone}\nRequested time: ${preference}\nThis is a request, not a confirmed appointment.`},config.emailReady);
       return {recorded:true,appointment_confirmed:false};
     }
     if (name==='stop_future_calls') { await store.suppress(call.id); return {recorded:true,future_calls_stopped:true}; }
