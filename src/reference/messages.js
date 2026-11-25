@@ -840,10 +840,15 @@ export function createClientMessages(lead) {
 
   const label = services[lead.service].label;
   const name = clean(lead.contact.name) || 'there';
+  const firstName = name.split(/\s+/)[0] || 'there';
   const callbackNote = lead.callback ? 'You asked for a call. Our team will contact you during office hours.' : '';
 
+  const smsMessages = [
+    `Hi! 👋 ${firstName},\n\nGood news-your conveyancing quote has just landed in your email. 📧\n\nIf it's playing hide and seek, check your Spam/Junk folder... sometimes our emails like to go on little adventures. 😄\n\nAny questions? Just email on admin1@rcorpo.com or call us on (08) 7076 9899.\n\nReady to get started?\n\nClick below :\n\nhttps://rcorpo.com/nc/\n\nCheers,\nRaikan Corporation`,
+    `Please provide following details to your real estate agent/ mortgage broker.\n\nCompany Name:\nRaikan Corporation\n\nContact Name:\nBhavesh Chaudhari\n\nContact No:\n08-70769899\n\nEmail:\nconveyancer@rcorpo.com`,
+  ];
+
   let emailPayload;
-  let smsText;
 
   if (lead.service === 'buy') {
     const buyerEmail = buildBuyerEmail(name, callbackNote);
@@ -855,7 +860,6 @@ export function createClientMessages(lead) {
       html: buyerEmail.html,
       attachments: buyerAttachments.map(a => ({ ...a })),
     };
-    smsText = `RAIKAN CONVEYANCING\nBuying in SA\n\nOur fee: $660 + GST\nOther charges are extra:\nFile fee: $88.00\nPEXA electronic settlement: $146.30\nIdentity check: $50.00 per person\nAML / CTF check: $25.00 per person\n\nThis is a cost guide, not a full settlement total. Charges and tax treatment will be confirmed.\nQuestions? Call 08 7076 9899.`;
   } else if (lead.service === 'sell') {
     const vendorEmail = buildVendorEmail(name, callbackNote);
     emailPayload = {
@@ -866,7 +870,6 @@ export function createClientMessages(lead) {
       html: vendorEmail.html,
       attachments: vendorAttachments.map(a => ({ ...a })),
     };
-    smsText = `RAIKAN CONVEYANCING\nSelling in SA\n\nOur fee: $660 + GST\nPreparation of Contract: $990 (plus GST)\nOther charges are extra:\nFile fee: $88.00\nPEXA electronic settlement: $146.30\nIdentity check: $50.00 per vendor\nAML / CTF check: $25.00 per vendor\n\nThis is a cost guide, not a full settlement total. Charges and tax treatment will be confirmed.\nQuestions? Call 08 7076 9899.`;
   } else if (lead.service === 'transfer' && lead.choice === 'spouse') {
     const spouseEmail = buildSpouseTransferEmail(name, callbackNote);
     emailPayload = {
@@ -877,7 +880,6 @@ export function createClientMessages(lead) {
       html: spouseEmail.html,
       attachments: [],
     };
-    smsText = `RAIKAN CONVEYANCING\nTransfer with current spouse\n\nOur fee: $990.00 (Incl. GST)\nOther fees and charges apply.\n\nReview your detailed quote in your messages.\nQuestions? Call 08 7076 9899.`;
   } else if (lead.service === 'transfer' && (lead.choice === 'former' || lead.choice === 'former_spouse')) {
     const formerEmail = buildFormerSpouseTransferEmail(name, callbackNote);
     emailPayload = {
@@ -888,7 +890,6 @@ export function createClientMessages(lead) {
       html: formerEmail.html,
       attachments: [],
     };
-    smsText = `RAIKAN CONVEYANCING\nTransfer with former spouse\n\nOur fee: $990.00 (Incl. GST)\nOther fees and charges apply.\n\nReview your detailed quote in your messages.\nQuestions? Call 08 7076 9899.`;
   } else if (lead.service === 'transfer' && lead.choice === 'family') {
     const familyEmail = buildFamilyTransferEmail(name, callbackNote);
     emailPayload = {
@@ -899,7 +900,6 @@ export function createClientMessages(lead) {
       html: familyEmail.html,
       attachments: [],
     };
-    smsText = `RAIKAN CONVEYANCING\nTransfer between family members other than spouse\n\nOur fee: $990.00 (Incl. GST)\nDisbursements as per actual from LTO.\n\nReview your detailed quote in your messages.\nQuestions? Call 08 7076 9899.`;
   } else {
     // Default fallback (e.g. generic transfer) - no reference number in customer email
     const subject = 'Your Raikan conveyancing quote';
@@ -924,12 +924,11 @@ export function createClientMessages(lead) {
       html,
       attachments: [],
     };
-    smsText = `RAIKAN CONVEYANCING\n${label}\n\nYour transaction needs a personal quote. We will confirm your costs.\nQuestions? Call 08 7076 9899.`;
   }
 
   return {
     feeVersion,
-    sms: { to: lead.contact.phone, text: smsText },
+    sms: { to: lead.contact.phone, text: smsMessages[0], texts: smsMessages },
     email: emailPayload,
     teamEmail: buildTeamEmail(lead),
   };

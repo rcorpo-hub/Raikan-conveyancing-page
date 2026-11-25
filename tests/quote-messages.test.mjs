@@ -4,6 +4,9 @@ import { existsSync } from 'node:fs';
 import { getBreakdown } from '../src/reference/config.js';
 import { createClientMessages, buildCallbackTeamEmail } from '../src/reference/messages.js';
 
+const expectedSms1 = (firstName) => `Hi! 👋 ${firstName},\n\nGood news-your conveyancing quote has just landed in your email. 📧\n\nIf it's playing hide and seek, check your Spam/Junk folder... sometimes our emails like to go on little adventures. 😄\n\nAny questions? Just email on admin1@rcorpo.com or call us on (08) 7076 9899.\n\nReady to get started?\n\nClick below :\n\nhttps://rcorpo.com/nc/\n\nCheers,\nRaikan Corporation`;
+const expectedSms2 = `Please provide following details to your real estate agent/ mortgage broker.\n\nCompany Name:\nRaikan Corporation\n\nContact Name:\nBhavesh Chaudhari\n\nContact No:\n08-70769899\n\nEmail:\nconveyancer@rcorpo.com`;
+
 const lead = {reference:'RAI-BUY-EXAMPLE',service:'buy',choice:'below',contact:{name:'Alex <script>alert(1)</script>',email:'sample@example.invalid',phone:'0400000000',notes:'Please call after lunch.'},callback:true};
 test('fee wording never presents GST separately or implies a settlement total', () => {
   for (const service of ['buy','sell']) {
@@ -16,7 +19,8 @@ test('fee wording never presents GST separately or implies a settlement total', 
 test('buyer messages include both existing PDF attachments, safe HTML, costs, detailed context, and no reference number in client email or team email', () => {
   const result = createClientMessages(lead);
   assert(result.email.text.includes('Conveyancing Cost: $660.00 (plus GST)'));
-  assert(result.sms.text.includes('$660 + GST'));
+  assert.deepEqual(result.sms.texts, [expectedSms1('Alex'), expectedSms2]);
+  assert.equal(result.sms.text, expectedSms1('Alex'));
   assert(result.email.text.includes('File Fees: $88.00'));
   assert(result.email.text.includes('Mortgage Registration: $204.00'));
   assert(result.email.text.includes('Stamp Duty: As per actual'));
@@ -39,7 +43,6 @@ test('buyer messages include both existing PDF attachments, safe HTML, costs, de
   assert.equal(result.email.attachments.length, 2);
   for (const attachment of result.email.attachments) assert(existsSync(attachment.path));
   assert.equal(result.sms.dependsOn, undefined);
-  assert(!result.sms.text.includes('in your email'));
 });
 test('vendor messages include seller costs, vendor PDF attachments, detailed context, and no reference number in client email or team email', () => {
   const result = createClientMessages({...lead,service:'sell',callback:false});
@@ -90,8 +93,7 @@ test('transfer with current spouse includes spouse transfer costs, required docu
   assert(result.email.text.includes('Existing Proprietor:'));
   assert(result.email.text.includes('New Proprietor :'));
   assert.equal(result.email.attachments.length, 0);
-  assert(result.sms.text.includes('Transfer with current spouse'));
-  assert(result.sms.text.includes('$990.00 (Incl. GST)'));
+  assert.deepEqual(result.sms.texts, [expectedSms1('Alex'), expectedSms2]);
 });
 test('transfer with former spouse includes former spouse transfer costs, required documents and information, no reference in client email or team email', () => {
   const result = createClientMessages({...lead,service:'transfer',choice:'former',callback:false});
@@ -116,8 +118,7 @@ test('transfer with former spouse includes former spouse transfer costs, require
   assert(result.email.text.includes('Existing Proprietor Number 1:'));
   assert(result.email.text.includes('Existing Proprietor Number 2:'));
   assert.equal(result.email.attachments.length, 0);
-  assert(result.sms.text.includes('Transfer with former spouse'));
-  assert(result.sms.text.includes('$990.00 (Incl. GST)'));
+  assert.deepEqual(result.sms.texts, [expectedSms1('Alex'), expectedSms2]);
 });
 test('transfer between family members other than spouse includes costs, LTO disbursements, premium services, process, no reference in client email or team email', () => {
   const result = createClientMessages({...lead,service:'transfer',choice:'family',callback:false});
@@ -136,8 +137,14 @@ test('transfer between family members other than spouse includes costs, LTO disb
   assert(result.email.text.includes('Our process will only start once we receive SCAP Approved plan from your town planner/surveyor.'));
   assert(result.email.text.includes('Please ensure that your lender will be willing to provide consent for the issuance of new title if you have mortgage on title.'));
   assert.equal(result.email.attachments.length, 0);
-  assert(result.sms.text.includes('Transfer between family members other than spouse'));
-  assert(result.sms.text.includes('$990.00 (Incl. GST)'));
+  assert.deepEqual(result.sms.texts, [expectedSms1('Alex'), expectedSms2]);
+});
+test('all quote categories including other send only the exact two SMS formats with client first name', () => {
+  for (const [service, choice] of [['buy','below'],['sell','agent'],['transfer','unsure'],['other','division']]) {
+    const result = createClientMessages({ ...lead, service, choice, contact: { ...lead.contact, name: 'Daman Preet' } });
+    assert.deepEqual(result.sms.texts, [expectedSms1('Daman'), expectedSms2]);
+    assert.equal(result.sms.text, expectedSms1('Daman'));
+  }
 });
 test('callback team email includes styled website template and no reference number', () => {
   const email = buildCallbackTeamEmail({ name: 'Jane Doe', phone: '0412345678', time: 'Morning' });

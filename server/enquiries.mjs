@@ -34,12 +34,10 @@ export function createEnquiryService({store,config,fetchImpl=fetch}) {
       const lead={...value,reference,idempotency_key:key,request_hash:digest(JSON.stringify(value)),access_token_hash:digest(accessToken),unsubscribe_hash:digest(unsubscribeToken),phone_hash:signed('phone:'+value.contact.phone),consent:{purpose:'quote_email_sms_and_enquiry_followup',version:'2026-11-20',requested_at:new Date().toISOString()},fee_snapshot:{version:feeVersion,rows:kind==='quote'?[...getBreakdown(value.service,value.choice),...getOptionalCharges(value.service)]:[]}};
       let messages;
       if (kind==='quote') messages=createClientMessages(lead);
-      else messages={sms:{to:value.contact.phone,text:`Raikan: Your callback request has been received. Our team will contact you during office hours. For urgent questions, call 08 7076 9899.`},teamEmail:buildCallbackTeamEmail({name:value.contact.name,phone:value.contact.phone,time:value.time}) };
-      let sms=messages.sms.text;
-      sms+=`\nStop texts: ${config.origin}/api/unsubscribe/${unsubscribeToken}`;
+      else messages={teamEmail:buildCallbackTeamEmail({name:value.contact.name,phone:value.contact.phone,time:value.time}) };
       const jobs=[];
       if (messages.email) jobs.push({channel:'client_email',status:config.emailReady?'pending':'disabled',payload:messages.email});
-      jobs.push({channel:'client_sms',status:config.smsReady?'pending':'disabled',depends_on:null,payload:{to:value.contact.phone,text:sms,reference}});
+      if (messages.sms) jobs.push({channel:'client_sms',status:config.smsReady?'pending':'disabled',depends_on:null,payload:{to:value.contact.phone,text:messages.sms.text,texts:messages.sms.texts,reference}});
       if (config.teamEmail) jobs.push({channel:'team_email',status:config.emailReady?'pending':'disabled',payload:{...messages.teamEmail,to:config.teamEmail}});
       const saved=await store.create(lead,jobs,signed('ip:'+ip));
       return {id:saved.id,reference:saved.reference,accessToken,service:value.service,choice:value.choice,delivery:await store.jobs(saved.id)};

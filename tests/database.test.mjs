@@ -91,7 +91,7 @@ test('Supabase migration and delivery transactions execute in local PostgreSQL',
    assert.equal((await db.query('select count(*)::int as n from public.quote_leads where id=$1',[saved.id])).rows[0].n,1);
    let sent;
    await createWorker({store,config,mailer:null,sinch:{send:async payload=>{sent=payload;return {providerId:randomUUID(),status:'accepted'};},status:async()=>'delivered'}}).runOnce();
-   assert.equal(sent.to,'+61412345678');assert(sent.text.includes('$660 + GST'));assert(sent.text.includes(saved.reference));
+   assert.equal(sent.to,'+61412345678');assert.equal(sent.texts.length,2);assert(sent.texts[0].includes('Hi! 👋 End,'));assert(sent.texts[1].includes('Bhavesh Chaudhari'));
    const status=await fetch(url+`/api/leads/${saved.id}/status`,{method:'POST',headers:{Origin:config.origin,'Content-Type':'application/json',Authorization:'Bearer '+saved.accessToken},body:'{}'});
    assert.equal(status.status,200);assert((await status.json()).delivery.some(job=>job.channel==='client_sms'&&job.status==='delivered'));
    const denied=await fetch(url+`/api/leads/${saved.id}/status`,{method:'POST',headers:{Origin:config.origin,'Content-Type':'application/json',Authorization:'Bearer '+'0'.repeat(64)},body:'{}'});

@@ -30,6 +30,7 @@ test('server validates consent, choice, email, phones and canonicalises the curr
 });
 test('Sinch submission uses authenticated server POST, exact payload and provider acknowledgement',async()=>{
  let captured;
+ const secondKey='baca0094-b272-4af5-937f-5f3486c3bf1c';
  const config={...base,sinchKey:'unit-key',sinchSecret:'unit-secret'};
  const sinch=createSinch(config,async(url,options)=>{captured={url,options};return new Response(JSON.stringify({messages:[{message_id:key,status:'queued'}]}),{status:202});});
  assert.deepEqual(await sinch.send({to:'+61412345678',text:'Our fee is $660 + GST',reference:'RAI-TEST'}),{providerId:key,status:'accepted'});
@@ -37,6 +38,12 @@ test('Sinch submission uses authenticated server POST, exact payload and provide
  assert.equal(captured.options.headers.Authorization,'Basic '+Buffer.from('unit-key:unit-secret').toString('base64'));
  const payload=JSON.parse(captured.options.body).messages[0];
  assert.equal(payload.format,'SMS');assert.equal(payload.metadata.quote_reference,'RAI-TEST');assert(payload.delivery_report);
+ const multi=createSinch(config,async(url,options)=>{captured={url,options};return new Response(JSON.stringify({messages:[{message_id:key,status:'queued'},{message_id:secondKey,status:'queued'}]}),{status:202});});
+ assert.deepEqual(await multi.send({to:'+61412345678',text:'First SMS',texts:['First SMS','Second SMS'],reference:'RAI-TEST'}),{providerId:key,status:'accepted'});
+ const batch=JSON.parse(captured.options.body).messages;
+ assert.equal(batch.length,2);assert.equal(batch[0].content,'First SMS');assert.equal(batch[1].content,'Second SMS');
+ const partial=createSinch(config,async()=>new Response(JSON.stringify({messages:[{message_id:key,status:'queued'}]}),{status:202}));
+ await assert.rejects(partial.send({to:'+61412345678',text:'First SMS',texts:['First SMS','Second SMS'],reference:'RAI-TEST'}),e=>e.outcome==='unknown');
 });
 test('Sinch unknown outcomes never silently retry; known rejections are classified',async()=>{
  const payload={to:'+61412345678',text:'Test',reference:'TEST'};
@@ -67,11 +74,20 @@ test('enquiry service builds server-side fee snapshots, consent, disabled jobs a
  assert.equal(captured[0].lead.contact.phone,'+61412345678');
  assert.equal(captured[0].lead.fee_snapshot.rows[0][1],'$660 + GST');
  assert(captured[0].jobs.every(j=>j.status==='disabled'));
- assert(!captured[0].jobs.find(j=>j.channel==='client_sms').payload.text.includes('in your email'));
- assert(captured[0].jobs.find(j=>j.channel==='client_sms').payload.text.includes('/api/unsubscribe/'));
+ const smsPayload=captured[0].jobs.find(j=>j.channel==='client_sms').payload;
+ assert.equal(smsPayload.texts.length,2);
+ assert(smsPayload.texts[0].startsWith('Hi! 👋 Test,\n\nGood news-your conveyancing quote has just landed in your email.'));
+ assert(smsPayload.texts[1].startsWith('Please provide following details to your real estate agent/ mortgage broker.'));
+ assert(!smsPayload.text.includes('/api/unsubscribe/'));
+ assert(!smsPayload.texts.some(t=>t.includes('/api/unsubscribe/')));
  assert(!JSON.stringify(first).includes('unit-secret'));
  await assert.rejects(service.create({...request,consent:false},key,'127.0.0.1'));
  await assert.rejects(createEnquiryService({store:null,config:base}).create(request,key,'127.0.0.1'),e=>e.status===503);
+ const callbackJobs=[];
+ const cbService=createEnquiryService({config:{...base,smsReady:true,emailReady:true,teamEmail:'team@example.invalid'},store:{create:async(_,jobs)=>{callbackJobs.push(...jobs);return {id:key,reference:'RAI-CB'};},jobs:async()=>[]}});
+ await cbService.create({contact:{name:'Callback Person',phone:'0412345678'},time:'morning',consent:true},key,'127.0.0.1','callback');
+ assert(!callbackJobs.some(j=>j.channel==='client_sms'));
+ assert(callbackJobs.some(j=>j.channel==='team_email'));
 });
 test('both services queue independently and retain the correct buyer attachments',async()=>{
  let jobs;

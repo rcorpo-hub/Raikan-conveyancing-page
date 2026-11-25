@@ -27,21 +27,25 @@ export function buildSinchMessage(job, config) {
   }
   return { ...base, format:'SMS', content:job.text };
 }
+export function buildSinchMessages(job, config) {
+  const texts = Array.isArray(job.texts) && job.texts.length ? job.texts : [job.text];
+  return texts.map((text) => buildSinchMessage({ ...job, text }, config));
+}
 export function createSinch(config, fetchImpl = fetch) {
   const headers = { Authorization:'Basic '+Buffer.from(`${config.sinchKey}:${config.sinchSecret}`).toString('base64'), 'Content-Type':'application/json', Accept:'application/json' };
   return {
     async send(payload) {
-      const message = buildSinchMessage(payload, config);
+      const messages = buildSinchMessages(payload, config);
       let response;
-      try { response = await fetchImpl(config.sinchUrl+'/v1/messages', { method:'POST', headers, body:JSON.stringify({messages:[message]}), signal:AbortSignal.timeout(20000) }); }
+      try { response = await fetchImpl(config.sinchUrl+'/v1/messages', { method:'POST', headers, body:JSON.stringify({messages}), signal:AbortSignal.timeout(20000) }); }
       catch { throw new DeliveryError('sinch_submission_uncertain', 'unknown'); }
       if (response.status === 429) throw new DeliveryError('sinch_rate_limited','retry');
       if (response.status >= 500) throw new DeliveryError('sinch_server_outcome_uncertain','unknown');
       if (response.status !== 202) throw new DeliveryError('sinch_http_'+response.status);
       const result = await response.json().catch(() => null);
-      const id = result?.messages?.[0]?.message_id;
-      if (!/^[\da-f]{8}-[\da-f-]{27}$/i.test(id || '')) throw new DeliveryError('sinch_missing_message_id','unknown');
-      return { providerId:id, status:'accepted' };
+      const validIds = Array.isArray(result?.messages) && result.messages.length === messages.length && result.messages.every((item) => /^[\da-f]{8}-[\da-f-]{27}$/i.test(item?.message_id || ''));
+      if (!validIds) throw new DeliveryError('sinch_missing_message_id','unknown');
+      return { providerId: result.messages[0].message_id, status:'accepted' };
     },
     async status(id) {
       if (!/^[\da-f]{8}-[\da-f-]{27}$/i.test(id)) throw new Error('Invalid provider message ID');
