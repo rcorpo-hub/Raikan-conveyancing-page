@@ -29,11 +29,13 @@ export function enhanceForms(root=document) {
   void publicSettings().then(async config=>{
     for(const [element,id] of widgets)if(!element.isConnected){window.turnstile?.remove(id);widgets.delete(element);}
     for(const form of root.querySelectorAll('form[data-hero-form],form[data-form="contact"],form[data-form="callback"]')) {
+      if (['step1','page1'].includes(form.dataset.heroForm)) continue;
       if(form.dataset.apiEnhanced)continue;
       form.dataset.apiEnhanced='true';
       const controls=document.createElement('div');controls.className='enquiry-permissions';
       const callback=form.dataset.form==='callback';
-      controls.innerHTML=`<label class="enquiry-consent"><input type="checkbox" name="communicationsConsent"><span>${callback?'I ask Raikan to contact me about this callback request.':'Please email and text my quote, and contact me about this enquiry.'} This is not a marketing sign-up.</span></label><label class="enquiry-honeypot" aria-hidden="true">Leave this empty<input name="website" type="text" tabindex="-1" autocomplete="off"></label><div class="enquiry-captcha"></div><p class="enquiry-form-error" role="alert" hidden></p>`;
+      const consent=form.querySelector('[name="communicationsConsent"]')?'':`<label class="enquiry-consent"><input type="checkbox" name="communicationsConsent"><span>${callback?'I ask Raikan to contact me about this callback request.':'Please email and text my quote, and contact me about this enquiry.'} This is not a marketing sign-up.</span></label>`;
+      controls.innerHTML=`${consent}<label class="enquiry-honeypot" aria-hidden="true">Leave this empty<input name="website" type="text" tabindex="-1" autocomplete="off"></label><div class="enquiry-captcha"></div><p class="enquiry-form-error" role="alert" hidden></p>`;
       form.querySelector('button[type="submit"]')?.before(controls);
       if(config.turnstileSiteKey){
         try{

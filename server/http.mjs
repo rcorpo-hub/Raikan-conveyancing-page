@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile,stat } from 'node:fs/promises';
 import { resolve,extname,sep } from 'node:path';
 import { HttpError } from './validation.mjs';
-const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.webp':'image/webp','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.pdf':'application/pdf'};
+const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json','.png':'image/png','.webp':'image/webp','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.ttf':'font/ttf','.pdf':'application/pdf'};
 const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 async function readBody(req,limit=16384) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new HttpError(415,'Use application/json.');
@@ -16,7 +16,7 @@ export function createHttpServer({config,service,runDelivery,log=console.error,s
   const server=createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
-    res.setHeader('X-Frame-Options','DENY');
+    res.setHeader('X-Frame-Options','SAMEORIGIN');
     if(config.production)res.setHeader('Strict-Transport-Security','max-age=31536000');
     try {
       const url=new URL(req.url,'http://localhost');
@@ -76,7 +76,7 @@ export function createHttpServer({config,service,runDelivery,log=console.error,s
       let file=path==='/'?resolve(root,'index.html'):requested;
       try{if(!(await stat(file)).isFile())throw new Error();}catch{if(extname(path))throw new HttpError(404,'Not found.');file=resolve(root,'index.html');}
       const data=await readFile(file).catch(()=>{throw new HttpError(404,'Build the frontend first with npm run build.');});
-      res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':path.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com; font-src 'self'; connect-src 'self' https://challenges.cloudflare.com https://ipapi.co https://api.country.is; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"});
+      res.writeHead(200,{'Content-Type':types[extname(file)]||'application/octet-stream','Cache-Control':path.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-cache','Content-Security-Policy':"default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://challenges.cloudflare.com; font-src 'self'; connect-src 'self' https://challenges.cloudflare.com https://ipapi.co https://api.country.is; frame-src 'self' https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"});
       res.end(req.method==='HEAD'?undefined:data);
     }catch(error){
       const code=/^[A-Z0-9_]{1,40}$/.test(error?.code || '')?error.code:null;

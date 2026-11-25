@@ -1,0 +1,9 @@
+{
+  "branch": "origin/main",
+  "commit": "46bc0ee57defce2028ff6e418348d394a7aaf83d",
+  "adaptations": [
+    "shared live API, consent and CAPTCHA",
+    "async submission errors and pending state",
+    "current fee wording"
+  ]
+}
