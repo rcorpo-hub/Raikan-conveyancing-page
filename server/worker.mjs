@@ -1,5 +1,5 @@
 export function createWorker({store,sinch,mailer,config,log=console.error}) {
-  let running = false, timer, lastMaintenance=0, lastQueueWarning=0;
+  let running, requested=false, timer, lastMaintenance=0, lastQueueWarning=0;
   async function deliver(job) {
     if ((job.channel === 'client_sms' && !config.smsReady) || (job.channel !== 'client_sms' && !config.emailReady)) {
       await store.finish(job.id,{status:'disabled',last_error:'delivery_disabled'}); return;
@@ -18,9 +18,7 @@ export function createWorker({store,sinch,mailer,config,log=console.error}) {
     // A lost database acknowledgement must never trigger a second send.
     await store.finish(job.id,{status:result.status,provider_id:result.providerId,last_error:null});
   }
-  async function runOnce() {
-    if (running || !store) return;
-    running = true;
+  async function runBatch() {
     try {
       if(store.maintenance&&Date.now()-lastMaintenance>3600000){await store.maintenance();lastMaintenance=Date.now();}
       const batch=[];
@@ -43,11 +41,21 @@ export function createWorker({store,sinch,mailer,config,log=console.error}) {
         lastQueueWarning=Date.now();
       }
     }
-    finally { running=false; }
+  }
+  function runOnce() {
+    if(!store)return Promise.resolve();
+    requested=true;
+    if(running)return running;
+    // A submission arriving during delivery needs another pass. All callers keep
+    // the same promise alive rather than dropping that new request's wake-up.
+    running=(async()=>{
+      do{requested=false;await runBatch();}while(requested);
+    })().finally(()=>{running=undefined;});
+    return running;
   }
   return {
     runOnce,
     start() { timer=setInterval(runOnce,config.workerInterval); timer.unref(); void runOnce(); },
-    async stop() { clearInterval(timer); while(running) await new Promise(resolve=>setTimeout(resolve,50)); mailer?.close(); },
+    async stop() { clearInterval(timer); await running; mailer?.close(); },
   };
 }

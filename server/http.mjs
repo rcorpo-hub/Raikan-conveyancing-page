@@ -10,7 +10,7 @@ async function readBody(req,limit=16384) {
   for await (const chunk of req) {body+=chunk;if(Buffer.byteLength(body)>limit) throw new HttpError(413,'Your request is too long.');}
   try{return JSON.parse(body);}catch{throw new HttpError(400,'Invalid request.');}
 }
-export function createHttpServer({config,service,runDelivery,log=console.error,staticRoot=resolve('dist')}) {
+export function createHttpServer({config,service,runDelivery,waitUntil,log=console.error,staticRoot=resolve('dist')}) {
   const buckets=new Map();
   const localDevelopment=!config.production&&!config.vercel;
   const allowed=new Set([config.origin,...(config.allowedOrigins || []),...(localDevelopment?['http://localhost:5173','http://127.0.0.1:5173','http://localhost:4174','http://127.0.0.1:4174']:[])]);
@@ -56,9 +56,12 @@ export function createHttpServer({config,service,runDelivery,log=console.error,s
         const body=await readBody(req);
         if(req.method==='POST'&&['/api/quotes','/api/callbacks'].includes(path)){
           const result=await service.create(body,req.headers['idempotency-key'],ip,path==='/api/quotes'?'quote':'callback',req.headers.origin);
-          // In serverless deployments there is no always-on worker. Kick off the durable jobs
-          // during the request so queued email and SMS work can begin promptly.
-          await Promise.allSettled([runDelivery?.()]);
+          // The enquiry and outbox are already committed. Provider latency must not
+          // delay the quote popup; Vercel retains this work after the response.
+          if(runDelivery){
+            const delivery=Promise.resolve().then(()=>runDelivery()).catch(()=>log('Background delivery failed; the durable queue retains unfinished jobs.'));
+            waitUntil?.(delivery);
+          }
           return json(res,202,result);
         }
         const match=path.match(/^\/api\/leads\/([\da-f-]{36})\/(status|intent|onboarding|callback)$/);

@@ -1,3 +1,4 @@
+import { waitUntil } from '@vercel/functions';
 import { readConfig } from '../server/config.mjs';
 import { createStore } from '../server/store.mjs';
 import { createEnquiryService } from '../server/enquiries.mjs';
@@ -11,7 +12,7 @@ const config=readConfig();
 const store=createStore(config);
 const service=createEnquiryService({store,config});
 const deliveryWorker=createWorker({store,config,sinch:createSinch(config),mailer:config.emailReady?createMailer(config):null});
-const handler=createHttpServer({config,service,runDelivery:()=>deliveryWorker.runOnce()});
+const handler=createHttpServer({config,service,runDelivery:()=>deliveryWorker.runOnce(),waitUntil});
 
 export default function api(req,res) {
   handler.emit('request',req,res);
