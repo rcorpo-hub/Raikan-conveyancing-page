@@ -4,6 +4,8 @@
   "adaptations": [
     "shared live API, consent and CAPTCHA",
     "async submission errors and pending state",
-    "current fee wording"
+    "current fee wording",
+    "quote cost popup after successful save",
+    "cancel stale country lookups and preserve edited forms"
   ]
 }

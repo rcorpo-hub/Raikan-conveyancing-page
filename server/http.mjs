@@ -12,7 +12,8 @@ async function readBody(req,limit=16384) {
 }
 export function createHttpServer({config,service,runDelivery,log=console.error,staticRoot=resolve('dist')}) {
   const buckets=new Map();
-  const allowed=new Set([config.origin,...(!config.production?['http://localhost:5173','http://127.0.0.1:5173','http://localhost:4174','http://127.0.0.1:4174']:[])]);
+  const localDevelopment=!config.production&&!config.vercel;
+  const allowed=new Set([config.origin,...(config.allowedOrigins || []),...(localDevelopment?['http://localhost:5173','http://127.0.0.1:5173','http://localhost:4174','http://127.0.0.1:4174']:[])]);
   const server=createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','no-referrer');
@@ -44,7 +45,7 @@ export function createHttpServer({config,service,runDelivery,log=console.error,s
         }
         if(!['POST','PUT'].includes(req.method))throw new HttpError(404,'Not found.');
         let localOrigin=false;
-        if(!config.production){try{const origin=new URL(req.headers.origin);localOrigin=origin.protocol==='http:'&&['localhost','127.0.0.1'].includes(origin.hostname);}catch{}}
+        if(localDevelopment){try{const origin=new URL(req.headers.origin);localOrigin=origin.protocol==='http:'&&['localhost','127.0.0.1'].includes(origin.hostname);}catch{}}
         if(!allowed.has(req.headers.origin)&&!localOrigin)throw new HttpError(403,'This request is not allowed.');
         if(optout&&req.method==='POST'){
           // Body content is not needed; the secret token identifies the recipient.
@@ -54,7 +55,7 @@ export function createHttpServer({config,service,runDelivery,log=console.error,s
         }
         const body=await readBody(req);
         if(req.method==='POST'&&['/api/quotes','/api/callbacks'].includes(path)){
-          const result=await service.create(body,req.headers['idempotency-key'],ip,path==='/api/quotes'?'quote':'callback');
+          const result=await service.create(body,req.headers['idempotency-key'],ip,path==='/api/quotes'?'quote':'callback',req.headers.origin);
           // In serverless deployments there is no always-on worker. Kick off the durable jobs
           // during the request so queued email and SMS work can begin promptly.
           await Promise.allSettled([runDelivery?.()]);

@@ -52,6 +52,7 @@ test('main snapshot uses the shared live adapter and awaits saves before showing
  assert(!app.includes("from './preview.js'"));
  assert.match(app,/heroForm\.lead = await workflow\.createQuote\([\s\S]*?\}, form\);\s*heroForm\.step = 4;/);
  assert.match(app,/showFormError/);
+ assert.match(app,/renderHeroQuoteCard\(\);\s*showDialog\(submittedCostSummary\(\), 'cost-summary'\)/);
 });
 
 test('production static server permits its own design frame and serves imported fonts correctly',async()=>{

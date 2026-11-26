@@ -1,3 +1,4 @@
+import { readAppOrigins } from './origins.mjs';
 const bool = (v) => v === 'true';
 const number = (v, fallback, min = 1, max = 1e6) => {
   const n = v === undefined || v === '' ? fallback : Number(v);
@@ -9,7 +10,7 @@ export function readConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
   const config = {
     production, port: number(env.PORT, 3001, 1, 65535), host: env.HOST || '127.0.0.1',
-    origin: (env.PUBLIC_APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
+    ...readAppOrigins(env),
     supabaseUrl: env.SUPABASE_URL || '', supabaseKey: env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY || '',
     smsEnabled: bool(env.SMS_ENABLED), emailEnabled: bool(env.EMAIL_ENABLED), workerEnabled: env.WORKER_ENABLED !== 'false',
     sinchUrl: (env.SINCH_BASE_URL || 'https://au.app.api.sinch.com').replace(/\/$/, ''),

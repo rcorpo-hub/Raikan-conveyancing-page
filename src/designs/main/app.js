@@ -1,4 +1,4 @@
-import { services } from '../../reference/config.js';
+import { services, getBreakdown, getOptionalCharges, governmentCalculator } from '../../reference/config.js';
 import { track, workflow, enhanceForms, showFormError, deliveryCopy } from '../../reference/api.js';
 
 export function mountReference() {
@@ -73,9 +73,10 @@ export function mountReference() {
 
   async function detectCountryByIP() {
     try {
-      const res = await fetch('https://ipapi.co/json/', { cache: 'no-store' });
+      const res = await fetch('https://ipapi.co/json/', { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error('ipapi failed');
       const data = await res.json();
+      if (controller.signal.aborted) return;
       const cCode = (data.country_code || data.country || '').toUpperCase();
       if (cCode && !userCountryLocked) {
         const found = countries.find((c) => c.code === cCode);
@@ -92,10 +93,12 @@ export function mountReference() {
         renderHeroQuoteCard();
       }
     } catch {
+      if (controller.signal.aborted) return;
       try {
-        const res2 = await fetch('https://api.country.is');
+        const res2 = await fetch('https://api.country.is', { signal: controller.signal });
         if (!res2.ok) return;
         const d2 = await res2.json();
+        if (controller.signal.aborted) return;
         const c2 = (d2.country || '').toUpperCase();
         if (c2 && !userCountryLocked) {
           const found = countries.find((c) => c.code === c2);
@@ -427,6 +430,16 @@ export function mountReference() {
   const previewNote = (copy) => `<p class="preview-note">${copy}</p>`;
   const submit = (label) => `<button type="submit" class="button full">${label} ${pict('arrow')}</button>`;
 
+  function submittedCostSummary() {
+    const rows=[...getBreakdown(heroForm.service),...getOptionalCharges(heroForm.service)];
+    return heading('A clear view of your costs', services[heroForm.service].label)
+      + `<p class="lead-in">${esc(deliveryCopy(heroForm.lead))}</p>`
+      + `<dl class="artifact-cost-list">${rows.map(([label,amount])=>`<div><dt>${esc(label)}</dt><dd>${esc(amount)}</dd></div>`).join('')}</dl>`
+      + '<p class="mini">This is a cost guide, not your total settlement cost. The team will confirm the charges for your property.</p>'
+      + `<p><a href="${governmentCalculator}" target="_blank" rel="noopener noreferrer">SA government property fee calculator</a></p>`
+      + '<button class="button full" type="button" data-close>Done</button>';
+  }
+
   function result() {
     const service = services[state.service];
     const choiceName = service.choices.find(([key]) => key === state.choice)?.[1];
@@ -744,6 +757,7 @@ export function mountReference() {
     if (!form) return;
     const { name, value, checked } = event.target;
     if (form.dataset.heroForm === 'step1' || form.dataset.heroForm === 'step2' || form.dataset.heroForm === 'page1' || form.dataset.heroForm === 'page2') {
+      userCountryLocked = true;
       if (name === 'callback') {
         heroForm.contact.callback = checked;
       } else if (name === 'propertyValue') {
@@ -831,6 +845,7 @@ export function mountReference() {
       heroForm.step = 4;
       track('quote_displayed', { service: heroForm.service, choice: heroForm.choice, source: 'hero_card' });
       renderHeroQuoteCard();
+      showDialog(submittedCostSummary(), 'cost-summary');
       return;
     }
     if (!form.dataset.form) return;

@@ -6,7 +6,7 @@ const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 export function createEnquiryService({store,config,fetchImpl=fetch}) {
   const signed = value => createHmac('sha256',config.tokenSecret).update(value).digest('hex');
   const requireStore = () => { if (!store) throw new HttpError(503,'Our online enquiry service is not available yet. Please call 08 7076 9899.'); };
-  async function verifyCaptcha(token,requestKey) {
+  async function verifyCaptcha(token,requestKey,requestOrigin) {
     if (!config.turnstileSecret) return;
     if (typeof token !== 'string' || token.length>2048 || !token) throw new HttpError(400,'Please complete the security check.');
     let data;
@@ -14,7 +14,10 @@ export function createEnquiryService({store,config,fetchImpl=fetch}) {
       const response=await fetchImpl('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:config.turnstileSecret,response:token,idempotency_key:requestKey}),signal:AbortSignal.timeout(10000)});
       data=await response.json();
     } catch { throw new HttpError(503,'The security check is temporarily unavailable. Please try again.'); }
-    if (!data.success || data.hostname!==new URL(config.origin).hostname || data.action!=='quote_enquiry') throw new HttpError(400,'The security check expired. Please try again.');
+    const allowedOrigins=new Set([config.origin,...(config.allowedOrigins || [])]);
+    if(requestOrigin&&!allowedOrigins.has(requestOrigin))throw new HttpError(403,'This request is not allowed.');
+    const expectedHostname=new URL(requestOrigin || config.origin).hostname;
+    if (!data.success || data.hostname!==expectedHostname || data.action!=='quote_enquiry') throw new HttpError(400,'The security check expired. Please try again.');
   }
   async function authorised(id,token) {
     requireStore();
@@ -24,11 +27,11 @@ export function createEnquiryService({store,config,fetchImpl=fetch}) {
     return lead;
   }
   return {
-    async create(input,key,ip,kind='quote') {
+    async create(input,key,ip,kind='quote',requestOrigin) {
       requireStore();
       if (!uuid.test(key || '')) throw new HttpError(400,'A valid request identifier is required.');
       const value=validateQuote(input,kind);
-      await verifyCaptcha(input.captchaToken,key);
+      await verifyCaptcha(input.captchaToken,key,requestOrigin);
       const accessToken=signed('access:'+key), unsubscribeToken=signed('unsubscribe:'+key);
       const reference='RAI-'+new Date().toISOString().slice(0,10).replaceAll('-','')+'-'+randomUUID().slice(0,8).toUpperCase();
       const lead={...value,reference,idempotency_key:key,request_hash:digest(JSON.stringify(value)),access_token_hash:digest(accessToken),unsubscribe_hash:digest(unsubscribeToken),phone_hash:signed('phone:'+value.contact.phone),consent:{purpose:'quote_email_sms_and_enquiry_followup',version:'2026-11-20',requested_at:new Date().toISOString()},fee_snapshot:{version:feeVersion,rows:kind==='quote'?[...getBreakdown(value.service,value.choice),...getOptionalCharges(value.service)]:[]}};
